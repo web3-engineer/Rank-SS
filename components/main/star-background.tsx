@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 
 // --- CONFIGURAÇÕES VISUAIS ---
 const PARTICLE_COUNT = 2200; 
@@ -9,7 +10,7 @@ const SNAKE_THICKNESS = 60;
 const SNAKE_SPEED = 0.01;   
 
 const COLORS = [
-  "#22d3ee", "#0ea5e9", "#3b82f6", "#60a5fa", "#a5f3fc",
+  "#0ea5e9", "#22d3ee", "#3b82f6", "#2dd4bf", "#6366f1",
 ];
 
 interface Particle {
@@ -21,13 +22,14 @@ interface Particle {
   phi: number;   
   angle: number; 
   distance: number;
-  // Propriedades do Grid
-  gridX: number;
-  gridY: number;
+  // Propriedades da Barra Única
+  barX: number;
+  barY: number;
 }
 
 const ParticleSystem: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -43,7 +45,7 @@ const ParticleSystem: React.FC = () => {
     let animationId: number;
     let time = 0;
 
-    // Fases: 0=Globo, 1=Serpente, 2=Geometria, 3=Grid (GitHub style), 4=Explosão
+    // Fases: 0=Globo, 1=Serpente, 2=Geometria, 3=Barra Única, 4=Explosão
     let phase = 0; 
     let phaseTimer = 0;
 
@@ -60,17 +62,15 @@ const ParticleSystem: React.FC = () => {
       particles = [];
       const phiFactor = Math.PI * (3 - Math.sqrt(5)); 
       
-      // Configuração para o Grid (44 colunas x 50 linhas = 2200)
-      const cols = 50;
-      const rows = 44;
-      const spacing = 12; // Espaçamento entre os quadrados
+      // Configuração para uma única Barra Larga (ex: 100 colunas x 22 linhas = 2200)
+      const barCols = 100;
+      const spacing = 10; 
 
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const y_pos = 1 - (i / (PARTICLE_COUNT - 1)) * 2;
         
-        // Cálculo da posição no Grid
-        const col = i % cols;
-        const row = Math.floor(i / cols);
+        const col = i % barCols;
+        const row = Math.floor(i / barCols);
 
         particles.push({
           x: Math.random() * width,
@@ -81,30 +81,30 @@ const ParticleSystem: React.FC = () => {
           phi: Math.acos(y_pos),
           angle: (i / PARTICLE_COUNT) * Math.PI * 25,
           distance: Math.sqrt(i / PARTICLE_COUNT),
-          gridX: (col - cols / 2) * spacing,
-          gridY: (row - rows / 2) * spacing,
+          barX: (col - barCols / 2) * spacing,
+          barY: (row - 11) * spacing, // 11 é metade de 22 linhas para centralizar
         });
       }
     };
 
     const draw = () => {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.25)"; 
+      const isDark = resolvedTheme === "dark";
+      ctx.fillStyle = isDark ? "rgba(0, 0, 0, 0.25)" : "rgba(255, 255, 255, 0.25)"; 
       ctx.fillRect(0, 0, width, height);
 
       phaseTimer++;
 
-      // Gerenciador de Tempo das Fases
-      if (phase === 0 && phaseTimer > 300) { phase = 1; phaseTimer = 0; }
-      else if (phase === 1 && phaseTimer > 360) { phase = 2; phaseTimer = 0; }
-      else if (phase === 2 && phaseTimer > 400) { phase = 3; phaseTimer = 0; } // Transição para Grid
-      else if (phase === 3 && phaseTimer > 450) { phase = 4; phaseTimer = 0; } // Transição para Explosão
-      else if (phase === 4 && phaseTimer > 120) { phase = 0; phaseTimer = 0; }
+      if (phase === 0 && phaseTimer > 300) phase = 1, phaseTimer = 0;
+      else if (phase === 1 && phaseTimer > 360) phase = 2, phaseTimer = 0;
+      else if (phase === 2 && phaseTimer > 400) phase = 3, phaseTimer = 0; 
+      else if (phase === 3 && phaseTimer > 450) phase = 4, phaseTimer = 0; 
+      else if (phase === 4 && phaseTimer > 120) phase = 0, phaseTimer = 0;
 
       time += SNAKE_SPEED; 
       
       const centerX = width * 0.75; 
       const centerY = height * 0.5; 
-      const globalCenterX = width * 0.5; // Centro real da tela para o grid
+      const screenCenterX = width * 0.5;
       const globeRadius = Math.min(width, height) * GLOBE_RADIUS_RATIO;
 
       particles.forEach((p, i) => {
@@ -113,34 +113,24 @@ const ParticleSystem: React.FC = () => {
         let scale = 1; 
         let isSquare = false;
 
-        // --- FASE 0: GLOBO ORIGINAL ---
-        if (phase === 0) {
-          const rotationSpeed = time * 2;
-          const sphereX = globeRadius * Math.sin(p.phi) * Math.cos(p.theta + rotationSpeed);
-          const sphereZ = globeRadius * Math.sin(p.phi) * Math.sin(p.theta + rotationSpeed);
-          const sphereY = globeRadius * Math.cos(p.phi);
-          const perspective = 300 / (300 - sphereZ);
-          scale = Math.max(0.1, perspective); 
-          targetX = centerX + sphereX;
-          targetY = centerY + sphereY;
-        }
-
-        // --- FASE 1: SERPENTE ---
-        else if (phase === 1) {
-          const lag = i * 0.002; 
-          const t = time * 2 - lag;
-          const wanderX = Math.cos(t) * (width * 0.4) + Math.sin(t * 2.1) * (width * 0.1);
-          const wanderY = Math.sin(t * 1.3) * (height * 0.4) + Math.cos(t * 1.7) * (height * 0.1);
-          const snakeCenterX = (width * 0.5) + wanderX;
-          const snakeCenterY = (height * 0.5) + wanderY;
-          const r = Math.random() * SNAKE_THICKNESS;
-          const theta = Math.random() * Math.PI * 2;
-          targetX = snakeCenterX + Math.cos(theta) * r;
-          targetY = snakeCenterY + Math.sin(theta) * r;
-        }
-
-        // --- FASE 2: GEOMETRIA ---
-        else if (phase === 2) {
+        if (phase === 0) { // GLOBO
+          const rotation = time * 2;
+          const sx = globeRadius * Math.sin(p.phi) * Math.cos(p.theta + rotation);
+          const sz = globeRadius * Math.sin(p.phi) * Math.sin(p.theta + rotation);
+          const sy = globeRadius * Math.cos(p.phi);
+          const persp = 300 / (300 - sz);
+          scale = Math.max(0.1, persp); 
+          targetX = centerX + sx;
+          targetY = centerY + sy;
+        } 
+        else if (phase === 1) { // SERPENTE
+          const t = time * 2 - (i * 0.002);
+          const wx = Math.cos(t) * (width * 0.4) + Math.sin(t * 2.1) * (width * 0.1);
+          const wy = Math.sin(t * 1.3) * (height * 0.4) + Math.cos(t * 1.7) * (height * 0.1);
+          targetX = screenCenterX + wx + Math.cos(i) * SNAKE_THICKNESS;
+          targetY = (height * 0.5) + wy + Math.sin(i) * SNAKE_THICKNESS;
+        } 
+        else if (phase === 2) { // GEOMETRIA
           const shapeShift = Math.sin(phaseTimer * 0.03); 
           const spiralX = Math.cos(p.angle + time) * p.distance * globeRadius * 1.8;
           const spiralY = Math.sin(p.angle + time) * p.distance * globeRadius * 1.8;
@@ -151,29 +141,25 @@ const ParticleSystem: React.FC = () => {
           targetX = centerX + (spiralX * (1 - lerp) + geoX * lerp);
           targetY = centerY + (spiralY * (1 - lerp) + geoY * lerp);
         }
-
-        // --- FASE 3: GRID SYMMETRIC (GitHub Style) ---
-        else if (phase === 3) {
+        else if (phase === 3) { // BARRA DE PROGRESSO ÚNICA
           isSquare = true;
-          targetX = globalCenterX + p.gridX;
-          targetY = (height * 0.5) + p.gridY;
+          targetX = screenCenterX + p.barX;
+          targetY = (height * 0.5) + p.barY;
           
-          // Efeito de pulso de brilho baseado na coluna
-          const colIndex = i % 50;
-          const pulse = Math.sin(time * 5 + colIndex * 0.2);
-          scale = 0.8 + pulse * 0.2;
+          // Onda de brilho horizontal
+          const colIndex = i % 100;
+          const pulse = Math.sin(time * 8 + colIndex * 0.1);
+          scale = 0.8 + pulse * 0.4;
         }
-
-        // --- FASE 4: EXPLOSÃO ---
-        else if (phase === 4) {
-           const dx = p.x - globalCenterX;
+        else if (phase === 4) { // EXPLOSÃO
+           const dx = p.x - screenCenterX;
            const dy = p.y - (height * 0.5);
            const angle = Math.atan2(dy, dx);
            targetX = p.x + Math.cos(angle) * 15;
            targetY = p.y + Math.sin(angle) * 15;
         }
 
-        const ease = (phase === 4) ? 1 : 0.08;
+        const ease = phase === 4 ? 1 : 0.08;
         p.x += (targetX - p.x) * ease;
         p.y += (targetY - p.y) * ease;
 
@@ -181,22 +167,17 @@ const ParticleSystem: React.FC = () => {
         let alpha = phase === 0 ? (scale > 1 ? 1 : 0.3) : 0.8;
 
         if (isSquare) {
-          // Desenho do Estilo GitHub com Blur/Glow
           const s = 8 * scale;
-          
-          // Camada de Blur (Sombra/Brilho externo)
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = isDark ? 15 : 5; 
           ctx.shadowColor = p.color;
           ctx.fillStyle = p.color;
-          ctx.globalAlpha = alpha * 0.4;
+          ctx.globalAlpha = isDark ? alpha * 0.5 : alpha * 0.8;
           ctx.fillRect(p.x - s/2, p.y - s/2, s, s);
-
-          // Camada principal (Sharp)
+          
           ctx.shadowBlur = 0;
           ctx.globalAlpha = alpha;
           ctx.fillRect(p.x - s/2, p.y - s/2, s, s);
         } else {
-          // Círculo padrão para outras fases
           ctx.fillStyle = p.color;
           ctx.globalAlpha = alpha;
           ctx.arc(p.x, p.y, p.size * scale, 0, Math.PI * 2);
@@ -221,12 +202,12 @@ const ParticleSystem: React.FC = () => {
       cancelAnimationFrame(animationId); 
       window.removeEventListener("resize", onResize);
     };
-  }, [mounted]);
+  }, [mounted, resolvedTheme]);
 
-  if (!mounted) return <div className="fixed inset-0 z-0 bg-black" />;
+  if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-0 bg-black pointer-events-none">
+    <div className="fixed inset-0 z-0 transition-colors duration-500 bg-white dark:bg-black pointer-events-none">
       <canvas ref={canvasRef} className="w-full h-full block" />
     </div>
   );
