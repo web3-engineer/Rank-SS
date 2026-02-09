@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Activity, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Dna, Lock, Activity, CheckCircle, AlertTriangle } from 'lucide-react'; // Ícones atualizados
+import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 
-// Lista de Termos Biológicos
+// Lista Duplicada para garantir fluxo contínuo sem buracos
 const BASE_TERMS = [
     "Mitochondria", "Ribosome", "Nucleus", "Cytoplasm", "Membrane",
     "Lysosome", "Golgi", "Endoplasmic", "Vacuole", "Chloroplast",
@@ -15,15 +16,18 @@ const BASE_TERMS = [
     "Hemoglobin", "Leukocyte", "Platelet", "Plasma", "Antibody",
     "Antigen", "Virus", "Bacteria", "Fungi", "Mitosis"
 ];
+// Concatenamos 2x para ter moléculas suficientes preenchendo qualquer altura de tela
 const BIO_TERMS = [...BASE_TERMS, ...BASE_TERMS];
 
 const ZaeonBiologyRoom = () => {
     const { t } = useTranslation();
+    const router = useRouter();
+
     const [isLoaded, setIsLoaded] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(true); // Controla a visibilidade do modal
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null); // Referência para o tamanho do container pai
+    const modalRef = useRef<HTMLDivElement>(null);
 
     // --- 1. CONFIGURAÇÃO INICIAL ---
     useEffect(() => {
@@ -34,42 +38,37 @@ const ZaeonBiologyRoom = () => {
     // --- 2. AÇÃO DO BOTÃO "UNDERSTOOD" ---
     const handleUnderstood = () => {
         setIsModalOpen(false);
+        // Aqui você pode adicionar o redirecionamento ou a lógica para mostrar o conteúdo principal
+        console.log("Usuário aceitou os termos da sala de Biologia.");
+        // router.push('/dashboard-bio'); // Exemplo
     };
 
     // --- 3. BIO-PHYSICS ENGINE (DNA 3D Fluido) ---
+    // (Código mantido idêntico ao original para preservar o fundo)
     useEffect(() => {
         const canvas = canvasRef.current;
-        const container = containerRef.current;
-        if (!canvas || !container) return;
-        
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
         let animationFrameId: number;
-        // Mouse relativo ao canvas, não à tela inteira
         let mouse = { x: -1000, y: -1000 };
         const interactionRadius = 300;
 
         const handleMouseMove = (event: MouseEvent) => {
-            const rect = canvas.getBoundingClientRect();
-            mouse.x = event.clientX - rect.left;
-            mouse.y = event.clientY - rect.top;
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
         };
         const handleMouseLeave = () => { mouse.x = -1000; mouse.y = -1000; };
 
-        // Adiciona listeners no container ou janela, mas calcula relativo ao canvas
-        canvas.addEventListener('mousemove', handleMouseMove);
-        canvas.addEventListener('mouseout', handleMouseLeave);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseout', handleMouseLeave);
 
         const resize = () => {
-            // Ajusta o canvas para o tamanho do elemento pai (Container do Lounge), não da janela
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         };
-        
-        // ResizeObserver é melhor que window.resize para elementos internos
-        const resizeObserver = new ResizeObserver(() => resize());
-        resizeObserver.observe(container);
+        window.addEventListener('resize', resize);
         resize();
 
         const SPACING = 50; 
@@ -99,7 +98,7 @@ const ZaeonBiologyRoom = () => {
                 }
 
                 const helixRadius = 140;
-                const helixCenter = canvasW * 0.5; // Centralizado no container
+                const helixCenter = canvasW * 0.18;
                 const frequency = 0.005; 
 
                 const angle = (this.y * frequency) + (this.strand === 1 ? 0 : Math.PI);
@@ -177,7 +176,6 @@ const ZaeonBiologyRoom = () => {
             if (!ctx || !canvas) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Verifica o tema procurando a classe 'dark' no html ou body
             const isDarkNow = document.documentElement.classList.contains('dark');
 
             const drawStrand = (strandNum: 1 | 2) => {
@@ -230,109 +228,101 @@ const ZaeonBiologyRoom = () => {
         animate();
 
         return () => {
-            canvas.removeEventListener('mousemove', handleMouseMove);
-            canvas.removeEventListener('mouseout', handleMouseLeave);
-            resizeObserver.disconnect();
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('resize', resize);
+            window.removeEventListener('mouseout', handleMouseLeave);
             cancelAnimationFrame(animationFrameId);
         };
     }, []);
 
     return (
-        // FIX: w-full h-full (não w-screen), rounded para encaixar, relative para conter children
-        <div 
-            ref={containerRef}
-            className={`relative w-full h-full overflow-hidden font-mono transition-colors duration-500 rounded-[2.5rem]
+        <div className={`relative w-screen h-screen overflow-hidden font-mono transition-colors duration-500
             bg-gray-100 
             dark:bg-[linear-gradient(to_bottom_right,_#065f46_0%,_#022c22_60%,_#000000_100%)]
         `}>
 
-            {/* CAMADA 2: CANVAS (Z-0 para ficar atrás do modal mas dentro do container) */}
-            <canvas ref={canvasRef} className="absolute inset-0 z-0 pointer-events-auto" />
+            {/* CAMADA 2: CANVAS (O DNA) */}
+            <canvas ref={canvasRef} className="absolute inset-0 z-20 pointer-events-none" />
 
-            {/* CAMADA 3: MODAL INFORMATIVO (Absolute ao invés de Fixed para ficar dentro do módulo) */}
+            {/* CAMADA 3: MODAL INFORMATIVO */}
             <AnimatePresence>
                 {isLoaded && isModalOpen && (
                     <motion.div
-                        initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-                        animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
-                        exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-                        transition={{ duration: 0.4 }}
-                        className="absolute inset-0 z-30 flex items-center justify-center bg-black/40"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                        transition={{ duration: 0.4, ease: "easeOut" }}
+                        className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none" // pointer-events-none no container
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, y: 10 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 10 }}
-                            className={`w-full max-w-[400px] m-4 relative
-                            bg-white dark:bg-[#0a0a0a] border-2 border-gray-200 dark:border-green-900 shadow-2xl dark:shadow-[0_0_50px_-10px_rgba(16,185,129,0.3)]
+                        {/* O Modal em si tem pointer-events-auto para interagir */}
+                        <div
+                            ref={modalRef}
+                            className={`pointer-events-auto w-full max-w-[440px] transition-all duration-300 relative
+                            bg-white dark:bg-black border-2 border-gray-200 dark:border-green-900 shadow-xl dark:shadow-[0_0_40px_rgba(16,185,129,0.15)]
                             `}
                         >
                             {/* Top Bar (Visual Técnico) */}
-                            <div className="border-b p-3 flex items-center justify-between select-none bg-green-900/5 dark:bg-green-900/20 border-green-800/10 dark:border-green-800/50">
-                                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-green-500">
-                                    <Activity size={12} />
+                            <div className="border-b p-2 py-1.5 flex items-center justify-between select-none bg-green-900/20 border-green-800/50">
+                                <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-green-500">
+                                    <Activity size={10} />
                                     <span>PROTOCOL_V2</span>
                                 </div>
-                                <div className="flex gap-1.5">
-                                    <div className="w-2 h-2 border animate-pulse rounded-full bg-green-500 border-green-400"></div>
-                                    <div className="w-2 h-2 border rounded-full border-green-800/30"></div>
+                                <div className="flex gap-1">
+                                    <div className="w-1.5 h-1.5 border animate-pulse rounded-full bg-green-500 border-green-400"></div>
                                 </div>
                             </div>
 
                             {/* Corpo */}
-                            <div className="p-8 relative overflow-hidden">
-                                {/* Scanline Effect Sutil */}
-                                <div className="absolute inset-0 bg-[length:100%_4px] pointer-events-none z-0 opacity-0 dark:opacity-20
-                                     bg-[linear-gradient(rgba(16,185,129,0)_50%,rgba(16,185,129,0.1)_50%)]"></div>
+                            <div className="p-6 relative overflow-hidden">
+                                {/* Scanline Effect */}
+                                <div className="absolute inset-0 bg-[length:100%_3px] pointer-events-none z-0 opacity-0 dark:opacity-50
+                                     bg-[linear-gradient(rgba(16,185,129,0)_50%,rgba(16,185,129,0.05)_50%)]"></div>
 
-                                <div className="relative z-10 flex flex-col gap-6">
+                                <div className="relative z-10 flex flex-col gap-5">
                                     {/* Header do Aviso */}
-                                    <div className="border-l-4 pl-4 py-1 border-yellow-500 dark:border-yellow-600">
-                                        <h2 className="text-lg font-bold tracking-tight flex items-center gap-2 text-gray-800 dark:text-white">
-                                            <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                                    <div className="border-l-2 pl-3 py-1 border-yellow-500 dark:border-yellow-600">
+                                        <h2 className="text-base font-bold tracking-wider flex items-center gap-2 text-gray-800 dark:text-white">
+                                            <AlertTriangle className="w-4 h-4 text-yellow-500" />
                                             Usage Guidelines
                                         </h2>
-                                        <p className="text-[10px] mt-1 uppercase tracking-[0.2em] text-gray-400 dark:text-green-500/60 font-bold">
-                                            Restricted Environment
+                                        <p className="text-[10px] mt-1 uppercase tracking-widest text-gray-500 dark:text-green-500/70">
+                                            Restricted Topic Environment
                                         </p>
                                     </div>
 
                                     {/* Texto Informativo */}
-                                    <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-green-900/10 p-5 border border-gray-100 dark:border-green-800/30 rounded-sm">
-                                        <p className="mb-3 font-bold text-gray-800 dark:text-green-400 uppercase tracking-wide text-[10px]">Attention, Researcher.</p>
-                                        <p className="mb-3">
+                                    <div className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-green-900/10 p-4 border border-gray-100 dark:border-green-800/30">
+                                        <p className="mb-2 font-bold text-gray-800 dark:text-green-400">Attention, Researcher.</p>
+                                        <p>
                                             You are entering a specialized study zone. To maintain the integrity of the data stream, please ensure all queries are strictly related to:
                                         </p>
-                                        <ul className="space-y-1.5 list-none">
-                                            {['Biology & Ecosystems', 'Medicine & Pathology', 'Health Sciences'].map((item) => (
-                                                <li key={item} className="flex items-center gap-2 text-[11px] font-mono text-gray-500 dark:text-green-300">
-                                                    <span className="w-1 h-1 bg-green-500 rounded-full"></span>
-                                                    {item}
-                                                </li>
-                                            ))}
+                                        <ul className="mt-3 space-y-1 list-disc list-inside text-xs font-mono text-gray-500 dark:text-green-300">
+                                            <li>Biology & Ecosystems</li>
+                                            <li>Medicine & Pathology</li>
+                                            <li>Health Sciences</li>
                                         </ul>
                                     </div>
 
                                     {/* Botão de Ação */}
                                     <button
                                         onClick={handleUnderstood}
-                                        className="w-full py-4 text-xs font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 group duration-300 border
-                                        bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200 hover:text-gray-900
-                                        dark:bg-green-950/30 dark:border-green-800/50 dark:text-green-400 dark:hover:bg-green-900/50 dark:hover:text-white dark:hover:border-green-500"
+                                        className="w-full mt-2 border font-bold py-3 text-[10px] uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-2 group duration-300
+                                        bg-gray-100 border-gray-200 text-gray-600 hover:bg-green-600 hover:text-white hover:border-green-500
+                                        dark:bg-green-800/40 dark:border-green-600 dark:text-green-300 dark:hover:bg-green-600 dark:hover:text-white"
                                     >
-                                        <CheckCircle className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                        <CheckCircle className="w-3 h-3" />
                                         Understood
                                     </button>
                                 </div>
                             </div>
 
                             {/* Rodapé Técnico */}
-                            <div className="border-t p-2 flex justify-between text-[8px] uppercase tracking-widest bg-gray-50 dark:bg-black/80 border-gray-100 dark:border-green-900/30 text-gray-400 dark:text-green-800/60 font-mono">
+                            <div className="border-t p-1.5 flex justify-between text-[7px] uppercase tracking-wider bg-gray-50 dark:bg-black/90 border-gray-100 dark:border-green-900/40 text-gray-400 dark:text-green-800/70">
                                 <span>SECURE_CHANNEL_ESTABLISHED</span>
-                                <span>ID: BIO-8821</span>
+                                <span>WAITING_USER_INPUT</span>
                             </div>
 
-                        </motion.div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

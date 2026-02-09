@@ -8,7 +8,10 @@ import { useSession } from "next-auth/react";
 import Image from "next/image";
 import "@/src/i18n";
 
-// --- IMPORTS DA WORKSTATION (INTEGRAÇÃO) ---
+// --- IMPORTS ---
+import { Navbar } from "@/components/main/navbar";
+
+// --- IMPORTS DA WORKSTATION ---
 import { uploadToPinata } from "@/src/utils/ipfs";
 import zoxImage from "@/app/workstation/zox.png";
 import ethernautImage from "@/app/workstation/ethernaut.png";
@@ -20,7 +23,8 @@ import {
     EyeIcon, PowerIcon, PaperAirplaneIcon, UserCircleIcon,
     ArrowPathIcon, CommandLineIcon, HeartIcon, CalculatorIcon,
     ChevronUpIcon, ArrowDownTrayIcon, PlayIcon, DocumentDuplicateIcon,
-    RocketLaunchIcon, XMarkIcon
+    RocketLaunchIcon, XMarkIcon, ArrowsRightLeftIcon,
+    BookOpenIcon, DocumentTextIcon, PlayCircleIcon
 } from "@heroicons/react/24/outline";
 
 import MatrixRain from "@/components/main/star-background";
@@ -29,7 +33,7 @@ import ResearchCardPDF from "@/components/ui/ResearchCardPDF";
 interface StudyDoc { id: string; title: string; url: string; file?: File; }
 interface VideoItem { id: string; youtubeId: string; }
 
-// --- CONFIGURAÇÃO DE AGENTES (WORKSTATION) ---
+// --- CONFIGURAÇÃO DE AGENTES ---
 const AGENTS = {
     zenita: {
         name: "Zenita",
@@ -111,16 +115,27 @@ const ActionButton = ({ icon: Icon, label, onClick, colorClass = "hover:text-cya
     </div>
 );
 
+// Componente do Botão do Menu Lateral (Workstation)
+const WorkstationMenuButton = ({ icon: Icon, label, isActive, onClick }: any) => (
+    <button
+        onClick={onClick}
+        className={`group relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
+    >
+        <Icon className="w-5 h-5" />
+        <span className="absolute left-full ml-4 px-3 py-1.5 bg-[#0a0a0a] border border-white/20 rounded-lg text-[10px] uppercase font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-xl backdrop-blur-md">
+            {label}
+        </span>
+    </button>
+);
+
 export default function HomeworkPage() {
     const { t } = useTranslation();
     const router = useRouter();
     const { data: session, status } = useSession();
 
-    // REMOVIDO: Workstation Hooks (usePrivy, useWallets)
-    // O sistema agora confia puramente na sessão do NextAuth (session)
-
     const [mounted, setMounted] = useState(false);
     const [isFocusMode, setIsFocusMode] = useState(false);
+    const [isChatLeft, setIsChatLeft] = useState(false);
 
     // --- ESTADO DE MODO (STUDY vs WORK) ---
     const [viewMode, setViewMode] = useState<"study" | "work">("study");
@@ -142,13 +157,13 @@ export default function HomeworkPage() {
     // Estados da Workstation
     const [activeWorkSection, setActiveWorkSection] = useState<"doc" | "chat" | "terminal" | null>(null);
     const [selectedAgent, setSelectedAgent] = useState<AgentKey>("zenita");
+    const [activeWorkTool, setActiveWorkTool] = useState<"citations" | "stickbook" | "insights" | null>(null);
     const [docTitle, setDocTitle] = useState("Untitled_Research.txt");
     const [docContent, setDocContent] = useState("");
     const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
-    const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
     const [isImageLoading, setIsImageLoading] = useState(false);
     const [isBoosterOpen, setIsBoosterOpen] = useState(false);
-    const [isSystemProcessing, setIsSystemProcessing] = useState(false); // Renomeado de isBlockchainProcessing
+    const [isSystemProcessing, setIsSystemProcessing] = useState(false);
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,26 +173,11 @@ export default function HomeworkPage() {
     const workChatRef = useRef<HTMLDivElement>(null);
     const terminalRef = useRef<HTMLDivElement>(null);
 
-    // --- BLINDAGEM DA PÁGINA ---
+    // --- BLINDAGEM DA PÁGINA: DESATIVADA (Acesso Público) ---
     useEffect(() => {
-        if (status === "loading") return;
-
-        if (status === "unauthenticated") {
-            router.replace("/");
-            return;
-        }
-
-        if (status === "authenticated") {
-            const isAdmin = (session?.user as any)?.isAdmin;
-            const userRole = (session?.user as any)?.role;
-
-            if (isAdmin) return;
-
-            if (userRole === "professional" || userRole === "entrepreneur") {
-                router.replace("/workstation");
-            }
-        }
-    }, [status, session, router]);
+        // Não fazemos nada aqui, permitindo que a página carregue para todos.
+        // O status "loading" é tratado no render condicional abaixo para evitar flicker.
+    }, []);
 
     useEffect(() => { setMounted(true); }, []);
 
@@ -187,7 +187,6 @@ export default function HomeworkPage() {
         if (workChatRef.current) workChatRef.current.scrollTo({ top: workChatRef.current.scrollHeight, behavior: 'smooth' });
     }, [chatHistory, isTyping, isProcessing, viewMode]);
 
-    // --- LÓGICA DE ALTERNÂNCIA (TOGGLE) ---
     const handleToggleMode = () => {
         setIsTransitioning(true);
         setTimeout(() => {
@@ -196,7 +195,6 @@ export default function HomeworkPage() {
         }, 1500);
     };
 
-    // --- FUNÇÕES COMPARTILHADAS ---
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -208,7 +206,6 @@ export default function HomeworkPage() {
 
     const addLog = (msg: string) => setTerminalLogs(prev => [...prev, `zaeon@root:~$ ${msg}`]);
 
-    // --- LÓGICA STUDY MODE ---
     const handleFiles = (files: FileList | null) => {
         if (!files) return;
         const newFiles = Array.from(files).filter(f => f.type === 'application/pdf').map(file => ({
@@ -266,26 +263,16 @@ export default function HomeworkPage() {
 
     const handleSpecialistChat = (specialistId: number) => { window.open('https://chat.google.com', '_blank'); };
 
-    // --- LÓGICA WORK MODE (SEM WEB3/WALLET) ---
-    const handleAgentSwitch = (key: AgentKey) => {
-        if (key === selectedAgent) return;
-        setIsAgentMenuOpen(false);
-        setIsImageLoading(true);
-        setSelectedAgent(key);
-        addLog(t("workstation.logs.switched", { name: AGENTS[key].name }));
-        setTimeout(() => { setIsImageLoading(false); }, 600);
-    };
-
+    // --- LÓGICA WORK MODE ---
     const handleBoostAndSave = async () => {
-        // NÃO requer mais wallet, apenas sessão do usuário
         setIsSystemProcessing(true);
         addLog("🚀 Initiating System Synchronization...");
 
         try {
-            // Simulando um delay de processamento para UX
             await new Promise(r => setTimeout(r, 1500));
             addLog("✅ Data Integrity Verified.");
 
+            // Se não tiver sessão (público), usa "anonymous_user"
             const userId = session?.user?.email || "anonymous_user";
             const res = await fetch('/api/workspace', {
                 method: 'POST',
@@ -307,7 +294,6 @@ export default function HomeworkPage() {
     };
 
     const handleGenerateProtocol = async () => {
-        // Removida verificação de wallet
         const agent = AGENTS[selectedAgent];
         setIsSystemProcessing(true);
         addLog(t("workstation.logs.gen_protocol", { name: agent.name }));
@@ -321,14 +307,10 @@ export default function HomeworkPage() {
 
     // --- RENDERIZAÇÃO CONDICIONAL ---
     if (!mounted || status === "loading") {
-        return ( <div className="w-full h-screen bg-[#030014] flex items-center justify-center z-[999]"> <IosLoader status="VALIDANDO ACESSO ADMIN..." /> </div> );
+        return ( <div className="w-full h-screen bg-[#030014] flex items-center justify-center z-[999]"> <IosLoader status="LOADING ZAEON OS..." /> </div> );
     }
 
-    const isAdmin = (session?.user as any)?.isAdmin;
-    const userRole = (session?.user as any)?.role;
-    const isAuthorized = isAdmin || !userRole || userRole === "student" || userRole === "researcher";
-
-    if (status === "unauthenticated" || !isAuthorized) return null;
+    // Removido o bloqueio "unauthenticated" aqui para liberar a página.
 
     const activeConfig = AGENTS[selectedAgent];
     const panelStyle = "relative overflow-hidden backdrop-blur-2xl border border-white/10 shadow-[0_0_40px_rgba(34,211,238,0.12)] bg-[linear-gradient(135deg,rgba(7,38,77,0.4),rgba(11,58,164,0.3),rgba(7,38,77,0.4))] rounded-[24px] transition-all duration-300";
@@ -340,6 +322,24 @@ export default function HomeworkPage() {
             className={`relative w-full h-screen transition-all duration-500 overflow-hidden flex flex-row ${isFocusMode ? 'z-[200] bg-[#030014]' : 'bg-[#f0f4f8] dark:bg-[#030014]'}`}
         >
             <div className="absolute inset-0 z-0 pointer-events-none opacity-20"><MatrixRain /></div>
+
+            {/* NAVBAR (Sempre mostra, removida apenas em Focus Mode) */}
+            {!isFocusMode && (
+                <div className="absolute top-0 w-full z-50">
+                    <Navbar />
+                </div>
+            )}
+
+            {/* BOTÃO DE INVERSÃO DE LAYOUT */}
+            <div className="fixed top-4 right-4 z-[250]">
+                <button 
+                    onClick={() => setIsChatLeft(!isChatLeft)} 
+                    className="w-10 h-10 flex items-center justify-center rounded-full bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/10 backdrop-blur-md hover:scale-105 transition-all shadow-lg group"
+                    title={isChatLeft ? "Mover chat para direita" : "Mover chat para esquerda"}
+                >
+                    <ArrowsRightLeftIcon className="w-5 h-5 text-slate-600 dark:text-white group-hover:text-cyan-500 transition-colors" />
+                </button>
+            </div>
 
             {/* LOADER DE TRANSIÇÃO (MAC SPLASH) */}
             <AnimatePresence>
@@ -368,7 +368,15 @@ export default function HomeworkPage() {
 
                     <input type="file" ref={fileInputRef} className="hidden" accept="application/pdf" multiple onChange={(e) => handleFiles(e.target.files)} />
 
-                    <main ref={mainScrollRef} onClick={() => setActiveSection(null)} className={`relative z-20 flex-1 h-full overflow-y-auto pb-40 custom-scrollbar pr-[460px] space-y-12 transition-all duration-700 ${isFocusMode ? 'pt-10' : 'pt-[120px]'} ${isProcessing ? 'blur-[4px] opacity-40' : ''}`}>
+                    <main 
+                        ref={mainScrollRef} 
+                        onClick={() => setActiveSection(null)} 
+                        className={`relative z-20 flex-1 h-full overflow-y-auto pb-40 custom-scrollbar space-y-12 transition-all duration-700 
+                        ${isFocusMode ? 'pt-10' : 'pt-[120px]'} 
+                        ${isProcessing ? 'blur-[4px] opacity-40' : ''}
+                        ${isChatLeft ? 'pl-[460px] pr-8' : 'pr-[460px] pl-8'} 
+                        `}
+                    >
 
                         {/* 1. STUDY FILES */}
                         <section onClick={(e) => { e.stopPropagation(); setActiveSection('study'); }} className={`relative rounded-[41px] p-[1px] transition-all ${activeSection === 'study' ? 'z-[30]' : 'z-[10]'}`}>
@@ -419,27 +427,8 @@ export default function HomeworkPage() {
                             </div>
                         </section>
 
-                        {/* 3. VIDEOS */}
-                        <section onClick={(e) => { e.stopPropagation(); setActiveSection('videos'); }} className={`relative rounded-[40px] p-6 border transition-all ${activeSection === 'videos' ? 'border-cyan-400 shadow-2xl z-[30] bg-white' : 'border-slate-200 bg-slate-100/95 dark:bg-[#0f172a]/90'}`}>
-                            <div className="flex items-center gap-4 mb-6">
-                                <span className="text-slate-500 dark:text-cyan-400/60 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><VideoCameraIcon className="w-5 h-5" /> {t("homework.videos_title")}</span>
-                                <div className="flex items-center gap-2">
-                                    <ActionButton icon={ClipboardIcon} label={t("homework.paste_link")} onClick={handlePasteVideo} />
-                                    <ActionButton icon={SparklesIcon} label="Insights" onClick={() => alert("Em breve!")} colorClass="text-purple-500 hover:text-purple-600" />
-                                </div>
-                            </div>
-                            <div className="flex flex-row gap-8 overflow-x-auto pb-4 min-h-[300px]">
-                                {videos.map(vid => (
-                                    <div key={vid.id} className="flex-shrink-0 w-[480px] h-[270px] bg-black rounded-[32px] overflow-hidden shadow-2xl relative group/vid border border-white/5">
-                                        <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${vid.youtubeId}`} frameBorder="0" allowFullScreen />
-                                        <button onClick={() => setVideos(prev => prev.filter(v => v.id !== vid.id))} className="absolute top-4 right-4 p-2 bg-black/60 text-white rounded-full opacity-0 group-hover/vid:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4" /></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-
-                        {/* 4. SPECIALISTS CHAT CARDS */}
-                        <section className="grid grid-cols-2 gap-6 pb-20">
+                        {/* 3. SPECIALISTS CHAT CARDS */}
+                        <section className="grid grid-cols-2 gap-6">
                             {[1, 2].map((num) => {
                                 const isActive = activeSection === `specialist-${num}`;
                                 return (
@@ -467,10 +456,35 @@ export default function HomeworkPage() {
                                 );
                             })}
                         </section>
+
+                        {/* 4. VIDEOS */}
+                        <section onClick={(e) => { e.stopPropagation(); setActiveSection('videos'); }} className={`relative rounded-[40px] p-6 border transition-all ${activeSection === 'videos' ? 'border-cyan-400 shadow-2xl z-[30] bg-white' : 'border-slate-200 bg-slate-100/95 dark:bg-[#0f172a]/90'}`}>
+                            <div className="flex items-center gap-4 mb-6">
+                                <span className="text-slate-500 dark:text-cyan-400/60 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><VideoCameraIcon className="w-5 h-5" /> {t("homework.videos_title")}</span>
+                                <div className="flex items-center gap-2">
+                                    <ActionButton icon={ClipboardIcon} label={t("homework.paste_link")} onClick={handlePasteVideo} />
+                                    <ActionButton icon={SparklesIcon} label="Insights" onClick={() => alert("Em breve!")} colorClass="text-purple-500 hover:text-purple-600" />
+                                </div>
+                            </div>
+                            <div className="flex flex-row gap-8 overflow-x-auto pb-4 min-h-[300px]">
+                                {videos.map(vid => (
+                                    <div key={vid.id} className="flex-shrink-0 w-[480px] h-[270px] bg-black rounded-[32px] overflow-hidden shadow-2xl relative group/vid border border-white/5">
+                                        <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${vid.youtubeId}`} frameBorder="0" allowFullScreen />
+                                        <button onClick={() => setVideos(prev => prev.filter(v => v.id !== vid.id))} className="absolute top-4 right-4 p-2 bg-black/60 text-white rounded-full opacity-0 group-hover/vid:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4" /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+
                     </main>
 
                     {/* CHAT ASIDE (STUDY MODE) */}
-                    <aside className={`fixed right-6 z-[60] w-[420px] bg-slate-50 shadow-2xl rounded-[40px] flex flex-col border border-slate-200 transition-all duration-700 ${isFocusMode ? 'top-6 h-[calc(100vh-48px)]' : 'top-[123px] h-[calc(100vh-155px)]'}`}>
+                    <aside 
+                        className={`fixed z-[60] w-[420px] bg-slate-50 shadow-2xl rounded-[40px] flex flex-col border border-slate-200 transition-all duration-700 
+                        ${isChatLeft ? 'left-6' : 'right-6'}
+                        ${isFocusMode ? 'top-6 h-[calc(100vh-48px)]' : 'top-[123px] h-[calc(100vh-155px)]'}
+                        `}
+                    >
                         <div className="p-8 border-b border-slate-200 flex items-center gap-2 justify-between">
                             <div className="flex items-center gap-2">
                                 <div className={`w-2 h-2 rounded-full ${isProcessing || isTyping ? 'bg-cyan-500 animate-pulse' : 'bg-slate-300'}`} />
@@ -503,112 +517,120 @@ export default function HomeworkPage() {
 
             {/* --- MODO WORK (WORKSTATION INTEGRADO) --- */}
             {viewMode === "work" && (
-                <div className="z-20 w-full max-w-[1700px] h-[88vh] grid grid-cols-12 gap-6 pt-20 px-4">
-                    {/* CHAT WINDOW */}
-                    <div onClick={() => setActiveWorkSection('chat')} className={`col-span-7 ${panelStyle} flex flex-col ${activeWorkSection === 'chat' ? 'ring-1 ring-cyan-400/50' : ''} relative h-full`}>
-                        {/* TOGGLE BUTTON DENTRO DO WORK MODE */}
-                        <div className="absolute top-4 left-4 z-40 flex gap-3">
-                            <button onClick={handleToggleMode} className="flex items-center gap-2 bg-white/5 border border-white/20 px-4 py-2 rounded-2xl hover:bg-white/10 transition-all backdrop-blur-md">
-                                <ArrowPathIcon className="w-4 h-4 text-white" />
-                                <span className="text-[10px] text-white font-bold uppercase">{t("homework.mode_study")}</span>
-                            </button>
-                        </div>
-
-                        {/* AGENT RENDER */}
-                        <div className="absolute bottom-6 left-6 z-30 flex flex-col items-center">
-                            <div className={`relative transition-all duration-500 flex justify-center items-end ${activeConfig.widthClass} h-auto`}>
-                                <AnimatePresence mode="wait">
-                                    {isImageLoading ? (
-                                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-48 w-full flex items-center justify-center">
-                                            <div className="animate-spin text-white/50 w-8 h-8 rounded-full border-2 border-white/20 border-t-cyan-500"></div>
-                                        </motion.div>
-                                    ) : (
-                                        <motion.div key={selectedAgent} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full flex justify-center">
-                                            <Image src={activeConfig.image} alt={activeConfig.name} className="w-full h-auto object-contain object-bottom drop-shadow-[0_0_35px_rgba(34,211,238,0.25)] max-h-[550px]" />
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                            {/* AGENT MENU */}
-                            <div className="relative mt-2">
-                                <AnimatePresence>
-                                    {isAgentMenuOpen && (
-                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-full left-0 mb-3 flex flex-col gap-2 bg-[#0a0a0a]/95 border border-white/10 rounded-xl p-2 backdrop-blur-xl shadow-2xl min-w-[160px] z-50">
-                                            {Object.keys(AGENTS).map((key) => {
-                                                const ag = AGENTS[key as AgentKey];
-                                                return (
-                                                    <button key={key} onClick={() => handleAgentSwitch(key as AgentKey)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/10 transition-all text-left">
-                                                        <div className={`p-1.5 rounded ${ag.bg} ${ag.color}`}><ag.icon className="w-4 h-4" /></div>
-                                                        <div className="flex flex-col"><span className="text-[12px] font-bold text-white">{ag.name}</span></div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                                <button onClick={() => setIsAgentMenuOpen(!isAgentMenuOpen)} className="flex items-center gap-3 bg-[#0a0a0a]/60 border border-white/10 hover:border-white/20 backdrop-blur-md rounded-full pl-2 pr-4 py-2 transition-all shadow-lg group">
-                                    <div className={`p-1.5 rounded-full ${activeConfig.bg} ${activeConfig.color} border ${activeConfig.border}`}><activeConfig.icon className="w-4 h-4" /></div>
-                                    <span className="text-xs font-bold text-white tracking-wide">{activeConfig.name}</span>
-                                    <ChevronUpIcon className={`w-3 h-3 text-white/30 ml-2 transition-transform duration-300 ${isAgentMenuOpen ? 'rotate-180' : ''}`} />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div ref={workChatRef} className="flex-1 relative p-6 overflow-y-auto custom-scrollbar flex flex-col z-0 pt-16">
-                            <div className="flex-1" />
-                            <div className="space-y-6 pb-2">
-                                {chatHistory.map((msg, i) => (
-                                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : `justify-start transition-all duration-300 ${activeConfig.contentPadding}`}`}>
-                                        <div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm font-light shadow-lg relative ${msg.role === 'user' ? 'bg-cyan-900/40 text-cyan-50 border border-cyan-500/30' : 'bg-[#0a0a0a]/80 text-white/90 border border-white/10'}`}>{msg.text}</div>
-                                    </div>
-                                ))}
-                                {isTyping && (
-                                    <div className={`flex justify-start transition-all duration-300 ${activeConfig.contentPadding}`}>
-                                        <div className="bg-[#0a0a0a]/60 border border-white/5 px-4 py-2 rounded-xl flex gap-1"><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" /></div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-5 bg-black/60 border-t border-white/10 flex flex-col gap-3 shrink-0 backdrop-blur-xl z-20 relative rounded-b-[24px]">
-                            <div className={`flex gap-3 items-center transition-all duration-300 ${activeConfig.contentPadding}`}>
-                                <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder={t("workstation.chat_placeholder", { role: t(activeConfig.roleKey).toLowerCase() })} className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" />
-                                <button onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">Send</button>
-                            </div>
-                        </div>
+                <div className="z-20 w-full max-w-[1700px] h-[88vh] flex pt-28 px-4 gap-6"> 
+                    
+                    {/* MENU LATERAL (SIDEBAR) */}
+                    <div className="relative w-16 flex flex-col items-center gap-6 py-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shrink-0 h-full z-[100]">
+                        <WorkstationMenuButton 
+                            icon={DocumentTextIcon} 
+                            label="Citations" 
+                            isActive={activeWorkTool === 'citations'} 
+                            onClick={() => setActiveWorkTool('citations')} 
+                        />
+                        <WorkstationMenuButton 
+                            icon={BookOpenIcon} 
+                            label="Stick Book" 
+                            isActive={activeWorkTool === 'stickbook'} 
+                            onClick={() => setActiveWorkTool('stickbook')} 
+                        />
+                        <WorkstationMenuButton 
+                            icon={PlayCircleIcon} 
+                            label="Video Insights" 
+                            isActive={activeWorkTool === 'insights'} 
+                            onClick={() => setActiveWorkTool('insights')} 
+                        />
                     </div>
 
-                    {/* DOC & TERMINAL */}
-                    <div className="col-span-5 flex flex-col gap-4 h-full">
-                        <div onClick={() => setActiveWorkSection('doc')} className={`${panelStyle} flex-1 flex flex-col ${activeWorkSection === 'doc' ? 'ring-1 ring-cyan-400/50' : ''}`}>
-                            <div className="h-14 bg-black/40 border-b border-white/10 flex items-center px-6">
-                                <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className="bg-transparent text-white/90 text-sm font-mono focus:outline-none w-full" />
+                    {/* GRID DE CONTEÚDO (Chat e Doc) */}
+                    <div className="flex-1 grid grid-cols-12 gap-6 h-full">
+                        {/* CHAT WINDOW */}
+                        <div 
+                            onClick={() => setActiveWorkSection('chat')} 
+                            className={`col-span-7 ${panelStyle} flex flex-col ${activeWorkSection === 'chat' ? 'ring-1 ring-cyan-400/50' : ''} relative h-full 
+                            ${isChatLeft ? 'order-first' : 'order-last'}
+                            `}
+                        >
+                            {/* TOGGLE BUTTON DENTRO DO WORK MODE */}
+                            <div className="absolute top-4 left-4 z-40 flex gap-3">
+                                <button onClick={handleToggleMode} className="flex items-center gap-2 bg-white/5 border border-white/20 px-4 py-2 rounded-2xl hover:bg-white/10 transition-all backdrop-blur-md">
+                                    <ArrowPathIcon className="w-4 h-4 text-white" />
+                                    <span className="text-[10px] text-white font-bold uppercase">{t("homework.mode_study")}</span>
+                                </button>
                             </div>
-                            <textarea value={docContent} onChange={(e) => setDocContent(e.target.value)} className="flex-1 p-8 font-mono text-sm text-slate-900 bg-[#f1f5f9] outline-none resize-none" />
-                            <div className="p-4 bg-[#f1f5f9] flex justify-end gap-3 rounded-b-[24px]">
-                                <button onClick={() => setIsBoosterOpen(true)} className="px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 bg-blue-100 text-blue-700 border-blue-400 hover:bg-blue-200 uppercase tracking-wider">
-                                    <ArrowDownTrayIcon className="w-4 h-4" /> {t("workstation.session_save")}
-                                </button>
-                                <button onClick={handleGenerateProtocol} disabled={isSystemProcessing} className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 uppercase tracking-wider ${isSystemProcessing ? 'bg-yellow-100 text-yellow-700 border-yellow-400' : 'bg-green-100 text-green-700 border-green-400 hover:bg-green-200'}`}>
-                                    <PlayIcon className="w-4 h-4" /> {isSystemProcessing ? t("workstation.processing") : t("workstation.generate")}
-                                </button>
+
+                            {/* AGENT RENDER (SEM MENU DE SELEÇÃO) */}
+                            <div className="absolute bottom-6 left-6 z-30 flex flex-col items-center">
+                                <div className={`relative transition-all duration-500 flex justify-center items-end ${activeConfig.widthClass} h-auto`}>
+                                    <AnimatePresence mode="wait">
+                                        {isImageLoading ? (
+                                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-48 w-full flex items-center justify-center">
+                                                <div className="animate-spin text-white/50 w-8 h-8 rounded-full border-2 border-white/20 border-t-cyan-500"></div>
+                                            </motion.div>
+                                        ) : (
+                                            <motion.div key={selectedAgent} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full flex justify-center">
+                                                <Image src={activeConfig.image} alt={activeConfig.name} className="w-full h-auto object-contain object-bottom drop-shadow-[0_0_35px_rgba(34,211,238,0.25)] max-h-[550px]" />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+
+                            <div ref={workChatRef} className="flex-1 relative p-6 overflow-y-auto custom-scrollbar flex flex-col z-0 pt-16">
+                                <div className="flex-1" />
+                                <div className="space-y-6 pb-2">
+                                    {chatHistory.map((msg, i) => (
+                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : `justify-start transition-all duration-300 ${activeConfig.contentPadding}`}`}>
+                                            <div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm font-light shadow-lg relative ${msg.role === 'user' ? 'bg-cyan-900/40 text-cyan-50 border border-cyan-500/30' : 'bg-[#0a0a0a]/80 text-white/90 border border-white/10'}`}>{msg.text}</div>
+                                        </div>
+                                    ))}
+                                    {isTyping && (
+                                        <div className={`flex justify-start transition-all duration-300 ${activeConfig.contentPadding}`}>
+                                            <div className="bg-[#0a0a0a]/60 border border-white/5 px-4 py-2 rounded-xl flex gap-1"><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" /></div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="p-5 bg-black/60 border-t border-white/10 flex flex-col gap-3 shrink-0 backdrop-blur-xl z-20 relative rounded-b-[24px]">
+                                <div className={`flex gap-3 items-center transition-all duration-300 ${activeConfig.contentPadding}`}>
+                                    <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder={t("workstation.chat_placeholder", { role: t(activeConfig.roleKey).toLowerCase() })} className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" />
+                                    <button onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">Send</button>
+                                </div>
                             </div>
                         </div>
-                        {!isFocusMode && (
-                            <div onClick={() => setActiveWorkSection('terminal')} className={`${panelStyle} h-[28%] flex flex-col shrink-0`}>
-                                <div className="h-9 bg-[#0a0a0a] border-b border-white/5 flex items-center px-4 shrink-0 justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] bg-emerald-500 text-emerald-500" />
-                                        <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">SYSTEM ONLINE</span>
-                                    </div>
-                                    <span className="text-[8px] text-white/20 font-mono tracking-[0.2em] uppercase">Zaeon Neural Node v2.0.26</span>
+
+                        {/* DOC & TERMINAL */}
+                        <div className="col-span-5 flex flex-col gap-4 h-full">
+                            <div onClick={() => setActiveWorkSection('doc')} className={`${panelStyle} flex-1 flex flex-col ${activeWorkSection === 'doc' ? 'ring-1 ring-cyan-400/50' : ''}`}>
+                                <div className="h-14 bg-black/40 border-b border-white/10 flex items-center px-6">
+                                    <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className="bg-transparent text-white/90 text-sm font-mono focus:outline-none w-full" />
                                 </div>
-                                <div ref={terminalRef} className="flex-1 p-4 font-mono text-xs text-green-500/80 bg-black/60 overflow-y-auto custom-scrollbar rounded-b-[24px]">
-                                    {terminalLogs.map((log, idx) => (<div key={idx} className="mb-1">{log}</div>))}
-                                    <p>zaeon@root:~$ <span className="animate-pulse">_</span></p>
+                                <textarea value={docContent} onChange={(e) => setDocContent(e.target.value)} className="flex-1 p-8 font-mono text-sm text-slate-900 bg-[#f1f5f9] outline-none resize-none" />
+                                <div className="p-4 bg-[#f1f5f9] flex justify-end gap-3 rounded-b-[24px]">
+                                    <button onClick={() => setIsBoosterOpen(true)} className="px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 bg-blue-100 text-blue-700 border-blue-400 hover:bg-blue-200 uppercase tracking-wider">
+                                        <ArrowDownTrayIcon className="w-4 h-4" /> {t("workstation.session_save")}
+                                    </button>
+                                    <button onClick={handleGenerateProtocol} disabled={isSystemProcessing} className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 uppercase tracking-wider ${isSystemProcessing ? 'bg-yellow-100 text-yellow-700 border-yellow-400' : 'bg-green-100 text-green-700 border-green-400 hover:bg-green-200'}`}>
+                                        <PlayIcon className="w-4 h-4" /> {isSystemProcessing ? t("workstation.processing") : t("workstation.generate")}
+                                    </button>
                                 </div>
                             </div>
-                        )}
+                            {!isFocusMode && (
+                                <div onClick={() => setActiveWorkSection('terminal')} className={`${panelStyle} h-[28%] flex flex-col shrink-0`}>
+                                    <div className="h-9 bg-[#0a0a0a] border-b border-white/5 flex items-center px-4 shrink-0 justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] bg-emerald-500 text-emerald-500" />
+                                            <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">SYSTEM ONLINE</span>
+                                        </div>
+                                        <span className="text-[8px] text-white/20 font-mono tracking-[0.2em] uppercase">Zaeon Neural Node v2.0.26</span>
+                                    </div>
+                                    <div ref={terminalRef} className="flex-1 p-4 font-mono text-xs text-green-500/80 bg-black/60 overflow-y-auto custom-scrollbar rounded-b-[24px]">
+                                        {terminalLogs.map((log, idx) => (<div key={idx} className="mb-1">{log}</div>))}
+                                        <p>zaeon@root:~$ <span className="animate-pulse">_</span></p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
