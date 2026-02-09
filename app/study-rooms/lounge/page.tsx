@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     BookOpenIcon, UsersIcon, BeakerIcon,
-    XMarkIcon, GlobeAmericasIcon,
+    XMarkIcon, NewspaperIcon, GlobeAmericasIcon,
     CpuChipIcon, ClipboardDocumentCheckIcon
 } from "@heroicons/react/24/outline";
 
@@ -34,14 +34,20 @@ const LoungeEarth = dynamic(() => import("@/components/sub/LoungeEarth"), {
     loading: () => <div className="w-40 h-40 rounded-full border border-white/5 animate-pulse" />
 }) as any;
 
-// Módulos
-const ProjectsModule = dynamic(() => import("./lounge-us/projects/page"), { loading: LoadingIcon });
-const ExamsModule = dynamic(() => import("./lounge-us/exams/page"), { loading: LoadingIcon });
-const LessonsModule = dynamic(() => import("./lounge-us/lessons/page"), { loading: LoadingIcon }); 
-const ResearchModule = dynamic(() => import("./lounge-us/research/page"), { loading: LoadingIcon });
+// ALTERAÇÃO 2: Caminhos e Pastas em Inglês (lounge-us)
+// Módulos Privados
+const ProjectsModule = dynamic(() => import("./main-lounge/projects/page"), { loading: LoadingIcon });
+const ExamsModule = dynamic(() => import("./main-lounge/exams/page"), { loading: LoadingIcon });
+const LessonsModule = dynamic(() => import("./main-lounge/lessons/page"), { loading: LoadingIcon }); 
+
+// Módulos Públicos
+const ResearchModule = dynamic(() => import("./main-lounge/research/page"), { loading: LoadingIcon });
+const NewsModule = dynamic(() => import("./main-lounge/news/page"), { loading: LoadingIcon });
 
 export default function LoungePageUS() {
-    
+    // Simulação de Login (Logic removed for direct access)
+    // const isLoggedIn = false; 
+
     const [activeTab, setActiveTab] = useState("community");
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
     const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -62,6 +68,7 @@ export default function LoungePageUS() {
     // --- LÓGICA DE RENDERIZAÇÃO ---
     const renderMainContent = () => {
         switch (activeTab) {
+            // --- PUBLIC MODULES ---
             case "community":
                 return (
                     <div className="w-full flex flex-col items-center">
@@ -73,11 +80,13 @@ export default function LoungePageUS() {
                         </motion.div>
                         
                         <AnimatePresence mode="wait">
+                            {/* Verifica se a região selecionada é US (ajuste conforme seu componente Earth) */}
                             {(selectedRegion === 'us' || selectedRegion === 'na') && (
                                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-xl">
                                     {!isFeedActive ? (
                                         <div className={`p-8 rounded-[2.5rem] ${cardStyle} text-center`}>
                                             <GlobeAmericasIcon className="w-8 h-8 mx-auto text-[#0f172a] dark:text-blue-400 mb-4" />
+                                            {/* Tradução da UI */}
                                             <h3 className="text-lg font-bold text-[#0f172a] dark:text-white">Cluster USA</h3>
                                             <button 
                                                 onClick={() => setIsFeedActive(true)} 
@@ -92,9 +101,12 @@ export default function LoungePageUS() {
                         </AnimatePresence>
                     </div>
                 );
-            
             case "research":
                 return <ResearchModule />;
+            case "news":
+                return <NewsModule />;
+
+            // --- FORMERLY PRIVATE MODULES (Restrictions Removed) ---
             case "projects":
                 return <ProjectsModule />;
             case "exams":
@@ -113,48 +125,19 @@ export default function LoungePageUS() {
             
             <div className="flex items-start justify-start px-4 gap-6 pt-32 w-full h-full relative">
                 
-                {/* SIDEBAR */}
+                {/* SIDEBAR (Labels Traduzidas) */}
                 <motion.aside
                     onMouseEnter={() => setIsSidebarExpanded(true)}
                     onMouseLeave={() => setIsSidebarExpanded(false)}
-                    className={`z-10 h-[64vh] rounded-[2.5rem] ${cardStyle} transition-all duration-500 flex flex-col items-center py-6 gap-4 ${isSidebarExpanded ? 'w-64 px-6' : 'w-20'}`}
+                    className={`z-10 h-[70vh] rounded-[2.5rem] ${cardStyle} transition-all duration-500 flex flex-col items-center py-6 gap-4 ${isSidebarExpanded ? 'w-64 px-6' : 'w-20'}`}
                 >
                     <div className="flex flex-col gap-2 w-full flex-1 justify-center">
-                        <SidebarItem 
-                            icon={<BeakerIcon className="w-5 h-5" />} 
-                            label="Projects" 
-                            active={activeTab === 'projects'} 
-                            expanded={isSidebarExpanded} 
-                            onClick={() => setActiveTab('projects')} 
-                        />
-                        <SidebarItem 
-                            icon={<ClipboardDocumentCheckIcon className="w-5 h-5" />} 
-                            label="Exams" 
-                            active={activeTab === 'exams'} 
-                            expanded={isSidebarExpanded} 
-                            onClick={() => setActiveTab('exams')} 
-                        />
-                        <SidebarItem 
-                            icon={<BookOpenIcon className="w-5 h-5" />} 
-                            label="Classes" 
-                            active={activeTab === 'lessons'} 
-                            expanded={isSidebarExpanded} 
-                            onClick={() => setActiveTab('lessons')} 
-                        />
-                        <SidebarItem 
-                            icon={<UsersIcon className="w-5 h-5" />} 
-                            label="Community" 
-                            active={activeTab === 'community'} 
-                            expanded={isSidebarExpanded} 
-                            onClick={() => setActiveTab('community')} 
-                        />
-                        <SidebarItem 
-                            icon={<CpuChipIcon className="w-5 h-5" />} 
-                            label="Research" 
-                            active={activeTab === 'research'} 
-                            expanded={isSidebarExpanded} 
-                            onClick={() => setActiveTab('research')} 
-                        />
+                        <SidebarItem icon={<BeakerIcon className="w-5 h-5" />} label="Projects" active={activeTab === 'projects'} expanded={isSidebarExpanded} onClick={() => setActiveTab('projects')} />
+                        <SidebarItem icon={<ClipboardDocumentCheckIcon className="w-5 h-5" />} label="Exams" active={activeTab === 'exams'} expanded={isSidebarExpanded} onClick={() => setActiveTab('exams')} />
+                        <SidebarItem icon={<BookOpenIcon className="w-5 h-5" />} label="Classes" active={activeTab === 'lessons'} expanded={isSidebarExpanded} onClick={() => setActiveTab('lessons')} />
+                        <SidebarItem icon={<UsersIcon className="w-5 h-5" />} label="Community" active={activeTab === 'community'} expanded={isSidebarExpanded} onClick={() => setActiveTab('community')} />
+                        <SidebarItem icon={<CpuChipIcon className="w-5 h-5" />} label="Research" active={activeTab === 'research'} expanded={isSidebarExpanded} onClick={() => setActiveTab('research')} />
+                        <SidebarItem icon={<NewspaperIcon className="w-5 h-5" />} label="News" active={activeTab === 'news'} expanded={isSidebarExpanded} onClick={() => setActiveTab('news')} />
                     </div>
                 </motion.aside>
 
@@ -162,7 +145,7 @@ export default function LoungePageUS() {
                 <main className={`z-10 flex-1 h-[82vh] rounded-[3.5rem] ${cardStyle} overflow-hidden flex flex-col relative`}>
                     <div className="p-10 pb-4 flex justify-between items-center border-b dark:border-white/5 border-black/5">
                         <h2 className="text-xl font-black uppercase tracking-[0.3em] dark:text-white text-[#0f172a] leading-none">
-                            {activeTab === 'lessons' ? 'Classes' : activeTab}
+                            {activeTab === 'exams' ? 'Exams' : activeTab === 'projects' ? 'Projects' : activeTab === 'lessons' ? 'Classes' : activeTab === 'research' ? 'Research' : activeTab === 'news' ? 'News' : activeTab}
                         </h2>
                         {selectedRegion && activeTab === 'community' && (
                             <button onClick={() => setSelectedRegion(null)} className="flex items-center gap-2 px-4 py-1.5 dark:bg-white/10 bg-[#0f172a] rounded-full text-[9px] font-black text-white uppercase tracking-widest hover:scale-105 transition-all">

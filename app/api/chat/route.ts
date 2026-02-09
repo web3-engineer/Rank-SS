@@ -6,17 +6,74 @@ import path from 'path';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+// --- 1. PROTOCOLO DE AGENDA (O Segredo para alterar os Cards) ---
+// Todos os agentes recebem isso. Se o usuário pedir para mudar a aula,
+// o agente sabe que deve responder APENAS JSON.
+const SCHEDULE_PROTOCOL = `
+[SYSTEM CAPABILITY: CLASS SCHEDULE MANAGEMENT]
+You have read/write access to the user's Weekly Schedule.
+1. If the user asks to ADD, REMOVE, MOVE, or CHANGE a class/event:
+   - You must return ONLY a raw JSON array representing the new state of the schedule.
+   - Do NOT wrap the JSON in markdown code blocks (no \`\`\`json). Just the raw array string.
+   - Maintain the structure: { id, name, teacher, room, days: [1-5], hour: [8-16], color }.
+   - Days mapping: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri.
+   - Colors available: "from-cyan-400 to-blue-500", "from-purple-500 to-pink-500", "from-orange-400 to-red-500", "from-emerald-400 to-green-500".
+2. If the user asks questions about the schedule without changing it, answer normally in text.
+`;
+
+// --- 2. LISTA DE ELENCO (Seus Agentes) ---
+const AGENT_PERSONAS: Record<string, string> = {
+    // LOUNGE / PERSONAL (Aura)
+    aura: `
+        You are "Aura", the Personal Concierge and Lounge Manager.
+        Role: Help the user organize their life, manage the schedule, and reduce anxiety.
+        Tone: Professional, warm, Apple-style aesthetic.
+        Focus: You are the primary interface for the "Annual Flow" and "Weekly Agenda".
+    `,
+
+    // TECH TEAM (Ethernaut, Butter, Viper)
+    ethernaut: `
+        You are "Ethernaut", a Senior Full Stack Architect.
+        Role: You oversee the entire tech stack. You are pragmatic and deep.
+        Partners: "Butter" (Backend Expert) and "Viper" (Frontend/UI Expert).
+        Directives: If the user asks about deep backend, quote Butter. If UI, quote Viper.
+        Stack: Next.js, Rust, Solidity, AI Agents.
+    `,
+    
+    // INNOVATION (Zenith)
+    zenith: `
+        You are "Zenith", the Innovation Strategist.
+        Role: Guide the user on AI productivity, Flow State, and Disruptive Tech.
+        Focus: New Era of AI, "Working Smarter", and futuristic trends.
+    `,
+
+    // BIOLOGY (Helix)
+    helix: `
+        You are "Helix", a Specialist in Biology and Medicine.
+        Role: Advanced bio-research assistant.
+        Focus: Anatomy, Neuroscience, CRISPR, Pharmacology.
+        Tone: Academic, precise, clinical but clear.
+    `,
+
+    // MATH & PHYSICS (Vector)
+    vector: `
+        You are "Vector", a Computational Engine for Math & Physics.
+        Role: Solve complex problems and explain theories.
+        Focus: Calculus, Quantum Mechanics, Relativity, Linear Algebra.
+        Tone: Logical, step-by-step, precise.
+    `
+};
+
 export async function POST(req: Request) {
     console.log("🚀 [API START] Iniciando Chat com Vertex AI...");
 
     try {
-        const { prompt, agent, fileData } = await req.json();
+        // Recebemos também 'systemContext' (que é o JSON da agenda atual vindo do front)
+        const { prompt, agent, fileData, systemContext } = await req.json();
 
-        // --- ESTRATÉGIA: LER ARQUIVO JSON DIRETO ---
-        // Isso evita 100% dos erros de formatação do .env
+        // --- AUTENTICAÇÃO (Sua versão funcional) ---
         let credentials;
         try {
-            // Caminho para o arquivo na raiz do projeto
             const keyFilePath = path.join(process.cwd(), 'service-account.json');
             
             if (fs.existsSync(keyFilePath)) {
@@ -24,10 +81,9 @@ export async function POST(req: Request) {
                 const rawData = fs.readFileSync(keyFilePath, 'utf-8');
                 credentials = JSON.parse(rawData);
             } else {
-                // Fallback para Vercel/Produção (caso use variáveis de ambiente lá no futuro)
                 console.log("⚠️ Arquivo não encontrado, tentando .env...");
                 if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY_BASE64) {
-                     throw new Error("Nenhuma credencial encontrada (Nem arquivo JSON, nem .env)");
+                     throw new Error("Nenhuma credencial encontrada.");
                 }
                 credentials = {
                     client_email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -35,8 +91,8 @@ export async function POST(req: Request) {
                 };
             }
         } catch (fileError: any) {
-            console.error("❌ Erro ao ler credenciais:", fileError.message);
-            throw new Error("Falha na leitura das credenciais de autenticação.");
+            console.error("❌ Erro de Auth:", fileError.message);
+            throw new Error("Falha na autenticação.");
         }
 
         // --- CONEXÃO GOOGLE ---
@@ -46,26 +102,41 @@ export async function POST(req: Request) {
             googleAuthOptions: {
                 credentials: {
                     client_email: credentials.client_email,
-                    private_key: credentials.private_key, // O JSON já entrega formatado perfeitamente
+                    private_key: credentials.private_key,
                 }
             }
         });
 
-        console.log("🤖 Vertex AI Inicializado.");
+        console.log(`🤖 Vertex AI Conectado. Agente solicitado: ${agent}`);
         
-        // --- CONFIGURAÇÃO DO MODELO ---
-        // Use 'gemini-1.5-flash' se o 2.0 ainda não estiver disponível na sua conta
+        // Usando o modelo que funcionou pra você
         const model = vertex_ai.getGenerativeModel({ model: "gemini-2.0-flash-001" });
 
-        // --- PREPARAÇÃO DO CONTEÚDO ---
-        let systemInstruction = "You are a helpful assistant.";
-        if (agent === "zenita") systemInstruction = "Você é a Zenita, uma IA raposa cyberpunk sarcástica e técnica.";
-        if (agent === "ethernaut") systemInstruction = "Você é o Ethernaut, especialista sênior em Blockchain.";
+        // --- CONSTRUÇÃO DO "CÉREBRO" ---
+        // 1. Escolhe a personalidade base (ou usa Aura por padrão)
+        const selectedPersona = AGENT_PERSONAS[agent?.toLowerCase()] || AGENT_PERSONAS.aura;
+
+        // 2. Monta a Instrução de Sistema Final
+        // (Protocolo de Agenda + Personalidade + Contexto Atual da Agenda)
+        let finalSystemInstruction = `
+            ${SCHEDULE_PROTOCOL}
+            
+            --- IDENTITY PROTOCOL ---
+            ${selectedPersona}
+        `;
+
+        // 3. Se o frontend mandou a agenda atual (JSON), injetamos aqui para o agente "ver"
+        if (systemContext) {
+            finalSystemInstruction += `\n\n[CURRENT LIVE SCHEDULE DATA]:\n${systemContext}`;
+        }
 
         const parts: any[] = [];
         
+        // Injeta a instrução de sistema no prompt
+        parts.push({ text: `SYSTEM INSTRUCTIONS:\n${finalSystemInstruction}` });
+
         if (fileData) {
-            console.log("📎 Anexando arquivo PDF...");
+            console.log("📎 Anexando PDF...");
             parts.push({
                 inlineData: {
                     data: fileData,
@@ -74,7 +145,7 @@ export async function POST(req: Request) {
             });
         }
 
-        parts.push({ text: `${systemInstruction}\n\nUser Question: ${prompt}` });
+        parts.push({ text: `USER QUERY: ${prompt}` });
 
         // --- GERAÇÃO ---
         console.log("⚡ Gerando resposta...");
@@ -86,7 +157,7 @@ export async function POST(req: Request) {
         
         if (!text) throw new Error("A IA devolveu uma resposta vazia.");
 
-        console.log("✅ Sucesso!");
+        console.log("✅ Resposta Gerada com Sucesso!");
         return NextResponse.json({ text });
 
     } catch (error: any) {
