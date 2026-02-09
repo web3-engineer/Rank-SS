@@ -150,11 +150,10 @@
       "vertex": { "title": "Vertex AI", "full": "Google Vertex AI", "desc": "Predictive Modeling" },
       "students": { "title": "Students", "full": "Academic Network", "desc": "Collection & Curatorship" },
       "research": { "title": "Research", "full": "Laboratories", "desc": "Scientific Validation" },
-      "publish": { "title": "Publishing", "full": "Dissemination", "desc": "Technical Papers" },
-      "compliance": { "title": "Compliance", "full": "Auditing", "desc": "Ethics & Legal" },
-      "blockchain": { "title": "Blockchain", "full": "Very Network", "desc": "Immutable Record" },
-      "ip": { "title": "IP", "full": "Property", "desc": "Copyrights" },
-      "token": { "title": "Token", "full": "Tokenization", "desc": "Digital Assets" }
+      "publish": { "title": "Publishing", "full": "Dissemination", "desc": "Technical quality" },
+      "compliance": { "title": "Compliance", "full": "Auditing", "desc": "Gamified experience" },
+      "blockchain": { "title": "Smart Agents", "full": "Daily life", "desc": "Smart tutors" }
+  
     }
   },
   "study_rooms": {
