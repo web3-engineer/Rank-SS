@@ -7,7 +7,7 @@
   },
   "intro": {
     "line1": "STUDY, LEARN = RESEARCH...",
-    "line2": "PUBLISH = MONETIZE"
+    "line2": "HARDER, FASTER, BETTER..."
   },
   "menu": {
     "new": "New Account",
@@ -23,7 +23,7 @@
   },
   "roles": {
     "student": "Student",
-    "researcher": "Researcher",
+    "researcher": "Professional",
     "professional": "Teacher",
     "entrepreneur": "Entrepreneur"
   },
@@ -42,7 +42,6 @@
     "off": "OFF"
   },
   "footer": {
-    "powered": "Help us go on chain! - Fund our researc here.",
     "version": "Zaeon OS - v1.0"
   },
   "modal": {
@@ -145,7 +144,7 @@
     "title": "AI Agents from Another Dimension.",
     "subtitle": "They came to help you be the best.",
     "button": "Learn more",
-    "typing_title": "A new way to produce science.",
+    "typing_title": "A new way to be better.",
     "pipeline_title": "The Zaeon Pipeline",
     "steps": {
       "vertex": { "title": "Vertex AI", "full": "Google Vertex AI", "desc": "Predictive Modeling" },
