@@ -1,255 +1,260 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image";
-import { motion, useInView } from "framer-motion";
-import { ArrowLeftIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
-import { useTranslation } from "react-i18next";
-import MacSplash from "@/components/ui/MacSplash";
+import { useState } from "react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowLeftIcon,
+  SunIcon,
+  MoonIcon,
+} from "@heroicons/react/24/solid";
 
-// --- SCRAMBLE TEXT (mantido, simplificado) ---
-const CHAR_POOL = ["紀", "律", "知", "識", "未", "来", "革", "新", "卓", "越", "智", "慧", "教", "育"];
+// --- CONTEÚDO (ZAEON MANIFESTO) ---
+const MANIFESTO_PAGES = [
+  {
+    title: "ZAEON MANIFESTO",
+    subtitle: "Preamble: Education as a Living System",
+    content: [
+      "Learning breaks when it becomes bureaucratic. Students drown in deadlines, unclear expectations, and fragmented tools. Teachers drown in admin work.",
+      "**Zaeon** exists to simplify that chaos: AI Agents guide learners step-by-step, while educators gain a lightweight command center to manage academic workflows at scale.",
+      "This is not “AI as a shortcut.” It is AI as a coach: helping students build real skills, track progress, and transform effort into measurable growth.",
+      "Zaeon turns learning into progression: missions, feedback loops, skill ranks (F → SS), and adaptive challenges — a system where motivation is engineered, not hoped for.",
+    ],
+  },
+  {
+    title: "GAMIFIED LEARNING",
+    subtitle: "From Confusion to Progress",
+    content: [
+      "Zaeon treats learning like a progression system: skills improve through missions, practice loops, and visible ranks.",
+      "AI Agents break large tasks into smaller steps: read → outline → draft → revise → submit — then they measure performance and suggest the next challenge.",
+      "Feedback is not generic. It is rubric-aligned, actionable, and continuous — so improvement is predictable instead of random.",
+      "The goal is simple: build disciplined, independent students who understand the academic process and can replicate it.",
+    ],
+  },
+  {
+    title: "ACADEMIC PRODUCTION",
+    subtitle: "Create Documents in Real Time",
+    content: [
+      "Zaeon is a live academic studio. Students can produce documents in real time while learning — with structure, templates, and agent guidance.",
+      "Write essays, reports, abstracts, proposals, and full theses in one workflow — from the first idea to the final submission.",
+      "Collaboration is built-in: co-writing, revision cycles, and clear versioning make teamwork easier for students and research groups.",
+      "The platform supports academic clarity: argument structure, citation organization, and revisions that actually converge to a final result.",
+    ],
+  },
+  {
+    title: "ACADEMIC ADMINISTRATION",
+    subtitle: "Made Easy for Teachers & Researchers",
+    content: [
+      "Teachers shouldn’t spend more time managing documents than teaching. Researchers shouldn’t spend more time coordinating than researching.",
+      "Zaeon provides a lightweight academic operations layer: assignments, submissions, review cycles, rubrics, and progress tracking — all connected to the learning system.",
+      "AI Agents help standardize evaluation, generate feedback drafts, and highlight patterns across a class — without replacing the educator’s judgment.",
+      "The result: less bureaucracy, faster cycles, clearer expectations, and better academic outcomes.",
+    ],
+  },
+];
 
-function useScrambleText(targetText: string, start: boolean) {
-  const [displayText, setDisplayText] = useState("");
-  const [isComplete, setIsComplete] = useState(false);
+// --- COMPONENTE: BOTÃO DE VOLTAR ---
+const BackButton = () => (
+  <Link href="/" className="fixed top-6 left-6 z-50 group">
+    <motion.div
+      whileHover={{ scale: 1.1, x: -5 }}
+      whileTap={{ scale: 0.95 }}
+      className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white group-hover:border-cyan-400 group-hover:text-cyan-400 transition-colors shadow-lg"
+    >
+      <ArrowLeftIcon className="w-5 h-5 md:w-6 md:h-6" />
+    </motion.div>
+  </Link>
+);
 
-  const stateRef = useRef<"idle" | "scrambling" | "resolving" | "holding">("idle");
-  const lastStateChangeRef = useRef<number>(0);
-  const rafRef = useRef<number | null>(null);
+// --- COMPONENTE: FUNDO SIMPLES (STARS) ---
+const SimpleStarBackground = () => (
+  <div className="absolute inset-0 z-0 bg-[#030014] overflow-hidden">
+    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 mix-blend-overlay"></div>
+    <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,_rgba(34,211,238,0.05)_0%,_transparent_50%)] animate-pulse" style={{ animationDuration: '4s' }}></div>
+    <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-cyan-900/10 to-transparent"></div>
+  </div>
+);
 
-  const animate = useCallback(
-    (ts: number) => {
-      if (!start) return;
-      if (!lastStateChangeRef.current) lastStateChangeRef.current = ts;
-
-      const elapsed = ts - lastStateChangeRef.current;
-
-      if (stateRef.current === "idle") {
-        stateRef.current = "scrambling";
-        lastStateChangeRef.current = ts;
-      }
-
-      if (stateRef.current === "scrambling") {
-        if (elapsed >= 1400) {
-          stateRef.current = "resolving";
-          lastStateChangeRef.current = ts;
-        } else {
-          setDisplayText(
-            targetText
-              .split("")
-              .map((c) => (c === " " ? " " : CHAR_POOL[Math.floor(Math.random() * CHAR_POOL.length)]))
-              .join("")
-          );
-        }
-      }
-
-      if (stateRef.current === "resolving") {
-        const progress = Math.min(elapsed / 900, 1);
-        const resolved = targetText
-          .split("")
-          .map((char, i) =>
-            i < Math.floor(targetText.length * progress)
-              ? char
-              : char === " "
-                ? " "
-                : CHAR_POOL[Math.floor(Math.random() * CHAR_POOL.length)]
-          )
-          .join("");
-
-        setDisplayText(resolved);
-
-        if (progress === 1) {
-          stateRef.current = "holding";
-          lastStateChangeRef.current = ts;
-          setIsComplete(true);
-        }
-      }
-
-      if (stateRef.current === "holding") {
-        if (elapsed >= 1800) {
-          stateRef.current = "scrambling";
-          lastStateChangeRef.current = ts;
-          setIsComplete(false);
-        }
-      }
-
-      rafRef.current = requestAnimationFrame(animate);
-    },
-    [start, targetText]
-  );
-
-  useEffect(() => {
-    if (start) rafRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [animate, start]);
-
-  return { displayText, isComplete };
-}
-
-// --- UI bits ---
-function CyberTitle({
-  mainText,
-  secondaryText,
-  scrollText,
-  startAnimations,
+// --- COMPONENTE: BOTÃO HOLOGRÁFICO ---
+const HoloButton = ({
+  children,
+  onClick,
+  disabled,
 }: {
-  mainText: string;
-  secondaryText: string;
-  scrollText: string;
-  startAnimations: boolean;
-}) {
-  const { displayText: sText, isComplete: sDone } = useScrambleText(secondaryText, startAnimations);
-  const { displayText: mText, isComplete: mDone } = useScrambleText(mainText, startAnimations);
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) => (
+  <motion.button
+    whileHover={!disabled ? { scale: 1.05, backgroundColor: "rgba(34, 211, 238, 0.1)" } : {}}
+    whileTap={!disabled ? { scale: 0.95 } : {}}
+    onClick={onClick}
+    disabled={disabled}
+    className={`relative group px-4 py-2 rounded-lg border border-cyan-500/20 bg-black/40 backdrop-blur-md transition-all flex items-center gap-2 ${
+      disabled ? "opacity-30 cursor-not-allowed" : "hover:border-cyan-400/50 text-cyan-400"
+    }`}
+  >
+    {children}
+  </motion.button>
+);
+
+// --- COMPONENTE: O "TABLET" COM O MANIFESTO ---
+const ZaeonManifesto = () => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const [direction, setDirection] = useState(0);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+
+  const pages = MANIFESTO_PAGES;
+  const current = pages[currentPage];
+
+  const paginate = (newDirection: number) => {
+    if (currentPage + newDirection < 0 || currentPage + newDirection >= pages.length) return;
+    setDirection(newDirection);
+    setCurrentPage(currentPage + newDirection);
+  };
+
+  const pageVariants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? 100 : -100,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      transition: { duration: 0.4, ease: "easeOut" },
+    },
+    exit: (dir: number) => ({
+      x: dir < 0 ? 100 : -100,
+      opacity: 0,
+      transition: { duration: 0.3, ease: "easeIn" },
+    }),
+  };
+
+  const renderContent = (paragraph: string, idx: number) => {
+    // Renderiza negrito (**text**)
+    const htmlContent = paragraph.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-300 font-bold">$1</strong>');
+    
+    return (
+      <p
+        key={idx}
+        className="mb-4 last:mb-0"
+        dangerouslySetInnerHTML={{ __html: htmlContent }}
+      />
+    );
+  };
 
   return (
-    <div className="text-center mb-16 relative z-20 min-h-[200px] flex flex-col justify-center">
-      <h2 className="text-lg md:text-2xl font-medium tracking-[0.3em] mb-3 font-mono uppercase h-8">
-        <span className={`${sDone ? "text-cyan-400/90" : "text-white/40"} transition-all duration-700`}>
-          {sText}
-        </span>
-      </h2>
+    <div className={`relative w-full max-w-3xl h-[80vh] max-h-[800px] flex flex-col rounded-[24px] border transition-colors duration-500 shadow-2xl backdrop-blur-xl z-20 ${
+        isDarkMode 
+        ? "bg-[#0a0a0a]/80 border-cyan-500/30 shadow-[0_0_50px_rgba(34,211,238,0.1)]" 
+        : "bg-white/90 border-slate-200 shadow-xl"
+    }`}>
+      
+      {/* HEADER DO TABLET */}
+      <div className={`flex items-center justify-between p-6 border-b ${isDarkMode ? "border-white/10" : "border-slate-200"}`}>
+        <div className="flex items-center gap-3">
+            <div className={`w-2 h-2 rounded-full animate-pulse ${isDarkMode ? "bg-cyan-400 shadow-[0_0_8px_currentColor]" : "bg-blue-500"}`} />
+            <span className={`text-[10px] uppercase tracking-[0.2em] font-bold ${isDarkMode ? "text-cyan-400" : "text-slate-500"}`}>
+                System Briefing // ZAEON
+            </span>
+        </div>
+        <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-full transition-colors ${isDarkMode ? "hover:bg-white/10 text-white" : "hover:bg-slate-100 text-slate-700"}`}
+        >
+            {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+        </button>
+      </div>
 
-      <h1 className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tighter text-white font-mono uppercase h-24">
-        <span className={`${mDone ? "text-white drop-shadow-[0_0_30px_rgba(34,211,238,0.6)]" : "text-white/20"}`}>
-          {mText}
-        </span>
-      </h1>
+      {/* ÁREA DE CONTEÚDO */}
+      <div className="flex-1 relative overflow-hidden p-8 md:p-12">
+        <AnimatePresence initial={false} custom={direction} mode="wait">
+          <motion.div
+            key={currentPage}
+            custom={direction}
+            variants={pageVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            className="absolute inset-0 p-8 md:p-12 overflow-y-auto custom-scrollbar"
+          >
+            <div className="max-w-2xl mx-auto">
+                <h1 className={`text-3xl md:text-5xl font-black mb-2 uppercase tracking-tight leading-none ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                    {current.title}
+                </h1>
+                
+                <div className={`h-1 w-16 mt-6 mb-8 rounded-full ${isDarkMode ? "bg-cyan-500" : "bg-blue-500"}`} />
+                
+                <h2 className={`text-sm font-bold mb-8 uppercase tracking-widest ${isDarkMode ? "text-cyan-500" : "text-blue-600"}`}>
+                    {current.subtitle}
+                </h2>
 
-      <div className="mt-10 flex flex-col items-center gap-3">
-        <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-[0.5em] animate-pulse">
-          {scrollText}
-        </span>
-        <ChevronDownIcon className="w-5 h-5 text-cyan-500/70" />
+                <div className={`text-base md:text-lg leading-relaxed font-light font-mono ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+                    {current.content.map((p, i) => renderContent(p, i))}
+                </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* FOOTER / CONTROLES */}
+      <div className={`p-6 border-t flex items-center justify-between ${isDarkMode ? "border-white/10 bg-black/20" : "border-slate-200 bg-slate-50/50"}`}>
+        <HoloButton onClick={() => paginate(-1)} disabled={currentPage === 0}>
+          <ChevronLeftIcon className="w-4 h-4" />
+          <span className="text-[10px] font-bold tracking-widest uppercase hidden md:inline">PREV</span>
+        </HoloButton>
+
+        <div className="flex gap-2">
+          {pages.map((_, i) => (
+            <div
+              key={i}
+              className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                i === currentPage 
+                ? (isDarkMode ? "bg-cyan-400 w-6" : "bg-blue-600 w-6") 
+                : (isDarkMode ? "bg-white/20" : "bg-slate-300")
+              }`}
+            />
+          ))}
+        </div>
+
+        <HoloButton onClick={() => paginate(1)} disabled={currentPage === pages.length - 1}>
+          <span className="text-[10px] font-bold tracking-widest uppercase hidden md:inline">NEXT</span>
+          <ChevronRightIcon className="w-4 h-4" />
+        </HoloButton>
       </div>
     </div>
   );
-}
+};
 
-function TextBlock({
-  children,
-  align = "left",
-  glow = "cyan",
-  direction = "none",
-  bg = "bg-black/70",
-}: {
-  children: React.ReactNode;
-  align?: "left" | "right" | "center";
-  glow?: "cyan" | "purple";
-  direction?: "left" | "right" | "none";
-  bg?: string;
-}) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: false, margin: "-15% 0px" });
-
-  const alignClass =
-    align === "left" ? "items-start text-left" : align === "right" ? "items-end text-right ml-auto" : "items-center text-center mx-auto";
-
-  const xInitial = direction === "left" ? -120 : direction === "right" ? 120 : 0;
-  const yInitial = direction === "none" ? 45 : 0;
-
+// --- PÁGINA PRINCIPAL ---
+export default function AboutPage() {
   return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, x: xInitial, y: yInitial }}
-      animate={inView ? { opacity: 1, x: 0, y: 0 } : { opacity: 0, x: xInitial, y: yInitial }}
-      transition={{ type: "spring", stiffness: 55, damping: 18 }}
-      className={`flex flex-col ${alignClass} max-w-4xl w-full p-10 rounded-[2.5rem]
-                  backdrop-blur-xl ${bg} border border-white/10 shadow-2xl relative overflow-hidden
-                  ${glow === "cyan" ? "hover:border-cyan-500/40" : "hover:border-purple-500/40"}`}
-    >
-      <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.05] via-transparent to-black/20" />
-      <div className="relative z-10 space-y-6 text-white leading-relaxed font-light text-lg md:text-xl">
-        {children}
-      </div>
-    </motion.div>
-  );
-}
-
-export default function AboutUsPage() {
-  const { t, i18n } = useTranslation();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-  if (!mounted || !i18n.isInitialized) return <MacSplash minDurationMs={900} />;
-
-  return (
-    <div className="relative min-h-[220vh] bg-[#030014] overflow-hidden font-sans z-[200]">
-      {/* Back button */}
-      <button
-        onClick={() => window.history.back()}
-        className="fixed top-28 left-10 z-[300] flex items-center gap-3 text-white/40 hover:text-cyan-400 group"
-      >
-        <div className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center backdrop-blur-xl bg-white/5 transition-all shadow-xl">
-          <ArrowLeftIcon className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-        </div>
-        <span className="text-[10px] uppercase tracking-[0.3em] font-black opacity-0 group-hover:opacity-100 transition-all">
-          {t("about.back")}
-        </span>
-      </button>
-
-      {/* Background */}
-      <div className="fixed inset-0 z-[190]">
-        <Image
-          src="/about/about-us-room.png"
-          alt="Rank SS learning environment"
-          fill
-          priority
-          className="object-cover opacity-60"
-        />
-        <div className="absolute inset-0 z-20 bg-gradient-to-t from-[#030014] via-[#030014]/60 to-transparent" />
+    <div className="relative w-full h-screen bg-[#030014] font-sans overflow-hidden flex flex-col">
+      <BackButton />
+      <SimpleStarBackground />
+      
+      <div className="relative z-10 flex-1 flex items-center justify-center p-4">
+        <ZaeonManifesto />
       </div>
 
-      {/* Content */}
-      <div className="relative z-[210] flex flex-col items-center pt-[32vh] pb-[28vh] px-6 gap-[16vh]">
-        <CyberTitle
-          startAnimations={true}
-          secondaryText={t("about.title_secondary")}
-          mainText={t("about.title_main")}
-          scrollText={t("about.scroll_down")}
-        />
-
-        {/* Card 1 */}
-        <TextBlock align="left" glow="cyan" bg="bg-black/80">
-          <h2 className="text-2xl md:text-4xl font-black text-white mb-2 tracking-tight uppercase flex items-center gap-4">
-            <span className="w-2 h-10 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
-            {t("about.genesis.title")}
-          </h2>
-          <p className="font-medium text-white/95">{t("about.genesis.p1")}</p>
-          <p className="text-white/80">
-            {t("about.genesis.p2")}{" "}
-            <span className="text-cyan-400 font-bold">{t("about.genesis.p2_highlight")}</span>
-          </p>
-        </TextBlock>
-
-        {/* Card 2 */}
-        <TextBlock align="right" glow="purple" direction="right" bg="bg-indigo-950/80">
-          <h2 className="text-2xl md:text-4xl font-black text-white mb-2 tracking-tight uppercase flex items-center justify-end gap-4">
-            {t("about.mission.title")}
-            <span className="w-2 h-10 bg-gradient-to-b from-purple-400 to-indigo-600 rounded-full shadow-[0_0_18px_rgba(168,85,247,0.5)]" />
-          </h2>
-          <p className="text-xl md:text-3xl font-extralight italic text-white drop-shadow-md">
-            {t("about.mission.p1")}
-          </p>
-          <p className="text-base text-white/70 mt-4 leading-relaxed">{t("about.mission.p2")}</p>
-        </TextBlock>
-
-        {/* CTA */}
-        <div className="text-center relative z-40 pb-[10vh]">
-          <h2 className="text-4xl md:text-7xl font-black text-white mb-10 tracking-tighter opacity-90">
-            {t("about.cta.tour_title")}
-          </h2>
-          <button
-            onClick={() => window.location.assign("/about/about-us")}
-            className="group relative px-14 md:px-20 py-7 bg-black/40 border border-cyan-500/30 text-white font-black text-lg md:text-xl uppercase tracking-[0.3em] overflow-hidden hover:scale-105 transition-all duration-500 rounded-2xl shadow-2xl backdrop-blur-md"
-          >
-            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-blue-600/40 via-cyan-500/40 to-blue-600/40 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
-            <span className="relative z-10 group-hover:text-cyan-100 transition-all">{t("about.cta.button_go")}</span>
-          </button>
-        </div>
-      </div>
+      {/* Global Styles para Scrollbar customizada dentro do componente */}
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(34, 211, 238, 0.2);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(34, 211, 238, 0.5);
+        }
+      `}</style>
     </div>
   );
 }
