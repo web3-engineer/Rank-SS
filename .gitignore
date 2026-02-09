@@ -6,4 +6,4 @@ build
 .env
 .env.local
 .DS_Store
-service--account.json
+service-account.json
