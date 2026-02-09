@@ -28,8 +28,8 @@ const NavbarComponent = () => {
   }
 
   // --- LÓGICA DE PERMISSÃO E VISIBILIDADE ---
-  // Apenas mantendo homework visível
-  const showHomework = true; 
+  // Atualizado para refletir o novo nome (Research Lab)
+  const showResearchLab = true; 
 
   const isActive = (path: string) => {
     if (path === "/") return pathname === "/";
@@ -69,10 +69,10 @@ const NavbarComponent = () => {
               {t("navbar.study_rooms")}
             </Link>
 
-            {/* Link Homework sempre renderiza */}
-            {showHomework && (
-                <Link href="/homework" className={getLinkClassName("/homework")}>
-                  {t("navbar.homework")}
+            {/* Link atualizado para /research-lab */}
+            {showResearchLab && (
+                <Link href="/research-lab" className={getLinkClassName("/research-lab")}>
+                  {t("navbar.homework")} 
                 </Link>
             )}
           </nav>
@@ -98,8 +98,9 @@ const NavbarComponent = () => {
                 {t("navbar.study_rooms")}
               </Link>
 
-              {showHomework && (
-                  <Link href="/homework" className={`py-3 w-full text-center rounded-lg ${isActive("/homework") ? "text-cyan-500 font-bold" : ""}`} onClick={() => setIsMobileMenuOpen(false)}>
+              {/* Link Mobile atualizado para /research-lab */}
+              {showResearchLab && (
+                  <Link href="/research-lab" className={`py-3 w-full text-center rounded-lg ${isActive("/research-lab") ? "text-cyan-500 font-bold" : ""}`} onClick={() => setIsMobileMenuOpen(false)}>
                     {t("navbar.homework")}
                   </Link>
               )}
