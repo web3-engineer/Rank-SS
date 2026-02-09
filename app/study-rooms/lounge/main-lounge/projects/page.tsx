@@ -258,7 +258,7 @@ export default function ProjectsModule() {
 
             if (response.ok) {
                 localStorage.setItem('zaeon_active_project', JSON.stringify(project));
-                alert(`Project "${project.title}" Initiated! Go to Homework Module to discuss with Agent.`);
+                alert(`Project "${project.title}" Initiated! Go to Research Lab to discuss with Agent.`);
             } else {
                 // If it still fails, fallback to local storage only so the UI doesn't break
                 console.warn("DB Sync failed, using local storage.");

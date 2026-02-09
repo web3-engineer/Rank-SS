@@ -60,7 +60,10 @@ model UserSpaceData {
   chatHistory Json?    // Histórico do Chat (Array de objetos)
   stickyNote  String?  // Texto do post-it
   activeProject Json?  // Projeto ativo
-  
+  citations     Json?  // Citações geradas pelos agentes
+  workContent String?
+  workTitle String?
+
   updatedAt   DateTime @updatedAt
 }
 
