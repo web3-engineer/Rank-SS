@@ -22,7 +22,7 @@ import {
     ArrowDownTrayIcon, PlayIcon,
     RocketLaunchIcon, XMarkIcon, ArrowsRightLeftIcon,
     BookOpenIcon, DocumentTextIcon, PlayCircleIcon,
-    EyeIcon, PowerIcon, BeakerIcon
+    EyeIcon, PowerIcon, BeakerIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon
 } from "@heroicons/react/24/outline";
 
 // --- COMPONENTS ---
@@ -129,7 +129,7 @@ export default function HomeworkPage() {
 
     // --- WORKSTATION STATES ---
     const [activeWorkSection, setActiveWorkSection] = useState<"doc" | "chat" | "terminal" | null>(null);
-    const [activeWorkTool, setActiveWorkTool] = useState<"citations" | "stickbook" | "insights" | null>("citations");
+    const [activeWorkTool, setActiveWorkTool] = useState<"chat" | "citations">("chat");
     const [docTitle, setDocTitle] = useState("Untitled_Research.txt");
     const [docContent, setDocContent] = useState("");
     const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
@@ -166,7 +166,7 @@ export default function HomeworkPage() {
     useEffect(() => {
         if (chatContainerRef.current) chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
         if (workChatRef.current) workChatRef.current.scrollTo({ top: workChatRef.current.scrollHeight, behavior: 'smooth' });
-    }, [studyChatHistory, workChatHistory, isTyping, isMainProcessing, viewMode]);
+    }, [studyChatHistory, workChatHistory, isTyping, isMainProcessing, viewMode, activeWorkTool]);
 
     const handleToggleMode = () => {
         setIsTransitioning(true);
@@ -288,19 +288,13 @@ export default function HomeworkPage() {
         }));
     };
 
-    const handleVideoInsights = async () => {
-        if (!activeProject) {
-            setWorkChatHistory(prev => [...prev, { role: 'ai', text: "⚠️ Watcher Error: No Active Project found. Go to Projects Module to select a topic." }]);
-            return;
+    const copyToClipboard = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            addLog("📋 Text copied to clipboard.");
+        } catch (err) {
+            console.error("Failed to copy", err);
         }
-        addLog("🎥 Watcher Agent: Focusing on Project Theme...");
-        const projectSpecificPrompt = `
-            FOCUS: You are strictly a video curator for the project "${activeProject.title}" in the domain of "${activeProject.domain}".
-            TASK: Suggest 3 YouTube video titles and channel names that explain the core concepts of THIS project.
-            CONSTRAINT: Do NOT use any external document. Use only the project title and domain provided.
-        `;
-        const result = await handleAgentAction('watcher', projectSpecificPrompt, false);
-        setWorkChatHistory(prev => [...prev, { role: 'ai', text: "[WATCHER RECOMMENDATIONS]\n" + result }]);
     };
 
     // --- MAIN CHAT LOGIC ---
@@ -329,7 +323,7 @@ export default function HomeworkPage() {
             let systemContext = null;
 
             if (viewMode === 'work') {
-                targetAgent = "scribe"; // FIXED: Using Scribe for academic writing discussion
+                targetAgent = "scribe"; 
                 systemContext = activeProject 
                     ? `[ACTIVE PROJECT]: ${JSON.stringify(activeProject)}\n[MODE]: Academic Discussion. Help the user articulate thoughts into formal prose.` 
                     : null;
@@ -385,7 +379,8 @@ export default function HomeworkPage() {
             addLog("✅ Data Integrity Verified.");
 
             const userId = session?.user?.email || "anonymous_user";
-            // FIX: chatHistory -> workChatHistory (Corrected Variable)
+            
+            // NOTE: Ensure your Prisma schema has 'workContent' and 'workTitle' fields
             const res = await fetch('/api/workspace', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -519,7 +514,7 @@ export default function HomeworkPage() {
                             </div>
                         </section>
 
-                        {/* SPECIALISTS (Scribe & Examiner) - ISOLATED CHATS */}
+                        {/* SPECIALISTS (Scribe & Examiner) */}
                         <section className="grid grid-cols-2 gap-6">
                             {/* Specialist 1: Scribe */}
                             <div onClick={(e) => { e.stopPropagation(); setActiveSection(`specialist-1`); }} className={`relative rounded-[40px] border shadow-sm h-[600px] flex flex-col overflow-hidden transition-all duration-500 ${activeSection === 'specialist-1' ? 'z-[30] border-cyan-500 shadow-2xl scale-[1.01] bg-white dark:bg-[#0f172a]' : 'z-[10] border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f172a] hover:shadow-xl'}`}>
@@ -530,8 +525,6 @@ export default function HomeworkPage() {
                                     </div>
                                     <UserCircleIcon className="w-8 h-8 text-purple-300" />
                                 </div>
-                                
-                                {/* SCRIBE CHAT */}
                                 <div className="flex-1 bg-slate-50/30 dark:bg-black/20 p-6 overflow-y-auto custom-scrollbar">
                                     {specialistChatHistory.scribe.length === 0 ? (
                                         <div className="h-full flex items-center justify-center">
@@ -551,20 +544,8 @@ export default function HomeworkPage() {
                                         </div>
                                     )}
                                 </div>
-
                                 <div className="p-4 bg-white dark:bg-[#0f172a] border-t border-slate-100 dark:border-white/5">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ask Scribe to rewrite..." 
-                                        onKeyDown={(e) => {
-                                            if(e.key === 'Enter') {
-                                                const val = (e.target as HTMLInputElement).value;
-                                                handleSpecialistQuery('scribe', val);
-                                                (e.target as HTMLInputElement).value = '';
-                                            }
-                                        }} 
-                                        className="w-full bg-slate-100 dark:bg-white/5 rounded-full py-3 px-5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-700 dark:text-white" 
-                                    />
+                                    <input type="text" placeholder="Ask Scribe to rewrite..." onKeyDown={(e) => { if(e.key === 'Enter') { const val = (e.target as HTMLInputElement).value; handleSpecialistQuery('scribe', val); (e.target as HTMLInputElement).value = ''; } }} className="w-full bg-slate-100 dark:bg-white/5 rounded-full py-3 px-5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-700 dark:text-white" />
                                 </div>
                             </div>
 
@@ -577,8 +558,6 @@ export default function HomeworkPage() {
                                     </div>
                                     <UserCircleIcon className="w-8 h-8 text-orange-300" />
                                 </div>
-
-                                {/* EXAMINER CHAT */}
                                 <div className="flex-1 bg-slate-50/30 dark:bg-black/20 p-6 overflow-y-auto custom-scrollbar">
                                     {specialistChatHistory.examiner.length === 0 ? (
                                         <div className="h-full flex items-center justify-center">
@@ -598,39 +577,21 @@ export default function HomeworkPage() {
                                         </div>
                                     )}
                                 </div>
-
                                 <div className="p-4 bg-white dark:bg-[#0f172a] border-t border-slate-100 dark:border-white/5">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Start a quiz on..." 
-                                        onKeyDown={(e) => {
-                                            if(e.key === 'Enter') {
-                                                const val = (e.target as HTMLInputElement).value;
-                                                handleSpecialistQuery('examiner', val);
-                                                (e.target as HTMLInputElement).value = '';
-                                            }
-                                        }} 
-                                        className="w-full bg-slate-100 dark:bg-white/5 rounded-full py-3 px-5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-700 dark:text-white" 
-                                    />
+                                    <input type="text" placeholder="Start a quiz on..." onKeyDown={(e) => { if(e.key === 'Enter') { const val = (e.target as HTMLInputElement).value; handleSpecialistQuery('examiner', val); (e.target as HTMLInputElement).value = ''; } }} className="w-full bg-slate-100 dark:bg-white/5 rounded-full py-3 px-5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-700 dark:text-white" />
                                 </div>
                             </div>
                         </section>
 
-                        {/* VIDEOS (Watcher Agent) */}
+                        {/* VIDEOS (Simplified) */}
                         <section onClick={(e) => { e.stopPropagation(); setActiveSection('videos'); }} className={`relative rounded-[40px] p-6 border transition-all ${activeSection === 'videos' ? 'border-cyan-400 shadow-2xl z-[30] bg-white' : 'border-slate-200 bg-slate-100/95 dark:bg-[#0f172a]/90'}`}>
                             <div className="flex items-center gap-4 mb-6">
                                 <span className="text-slate-500 dark:text-cyan-400/60 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><VideoCameraIcon className="w-5 h-5" /> {t("homework.videos_title")}</span>
                                 <div className="flex items-center gap-2">
                                     <ActionButton icon={ClipboardIcon} label={t("homework.paste_link")} onClick={handlePasteVideo} />
-                                    <ActionButton icon={SparklesIcon} label="Insights" onClick={handleVideoInsights} colorClass="text-purple-500 hover:text-purple-600" />
                                 </div>
                             </div>
                             <div className="flex flex-row gap-8 overflow-x-auto pb-4 min-h-[300px]">
-                                {videos.length === 0 && (
-                                    <div className="w-full flex items-center justify-center text-white/20 text-xs italic">
-                                        Use the Insights button to get recommendations from Watcher.
-                                    </div>
-                                )}
                                 {videos.map(vid => (
                                     <div key={vid.id} className="flex-shrink-0 w-[480px] h-[270px] bg-black rounded-[32px] overflow-hidden shadow-2xl relative group/vid border border-white/5">
                                         <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${vid.youtubeId}`} frameBorder="0" allowFullScreen />
@@ -653,7 +614,6 @@ export default function HomeworkPage() {
                         </div>
                         <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-10 space-y-6 text-slate-800 text-[14px] leading-relaxed custom-scrollbar">
                             {studyChatHistory.length === 0 && !isMainProcessing && <div className="text-center text-slate-400 text-xs italic mt-20">{t("homework.chat_empty")}</div>}
-                            {/* HERE IS THE FIX: RENDER STUDY CHAT HISTORY */}
                             {studyChatHistory.map((msg, i) => (
                                 <div key={i} className={`p-5 rounded-2xl ${msg.role === 'user' ? 'bg-cyan-50 ml-4 text-right' : 'bg-white mr-4 shadow-sm text-left'}`}>{msg.text}</div>
                             ))}
@@ -673,28 +633,51 @@ export default function HomeworkPage() {
             {viewMode === "work" && (
                 <div className={`z-20 w-full max-w-[1700px] h-[95vh] flex px-4 gap-6 ${isFocusMode ? 'pt-6' : 'pt-28'}`}> 
                     <div className="relative w-16 flex flex-col items-center gap-6 py-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shrink-0 h-full z-[100]">
+                        <WorkstationMenuButton icon={ChatBubbleLeftRightIcon} label="Chat" isActive={activeWorkTool === 'chat'} onClick={() => setActiveWorkTool('chat')} />
                         <WorkstationMenuButton icon={DocumentTextIcon} label="Citations" isActive={activeWorkTool === 'citations'} onClick={() => setActiveWorkTool('citations')} />
-                        <WorkstationMenuButton icon={BookOpenIcon} label="Stick Book" isActive={activeWorkTool === 'stickbook'} onClick={() => setActiveWorkTool('stickbook')} />
-                        <WorkstationMenuButton icon={PlayCircleIcon} label="Video Insights" isActive={activeWorkTool === 'insights'} onClick={() => setActiveWorkTool('insights')} />
                     </div>
+                    
                     <div className="flex-1 grid grid-cols-12 gap-6 h-full">
-                        <div onClick={() => setActiveWorkSection('chat')} className={`col-span-7 ${panelStyle} flex flex-col ${activeWorkSection === 'chat' ? 'ring-1 ring-cyan-400/50' : ''} relative h-full ${isChatLeft ? 'order-first' : 'order-last'}`}>
+                        {/* LEFT/CENTER PANEL: CHAT or CITATIONS */}
+                        <div className={`col-span-7 ${panelStyle} flex flex-col relative h-full ${isChatLeft ? 'order-first' : 'order-last'}`}>
                             <div className="absolute top-4 left-4 z-40 flex gap-3">
                                 <button type="button" onClick={handleToggleMode} className="flex items-center gap-2 bg-white/5 border border-white/20 px-4 py-2 rounded-2xl hover:bg-white/10 transition-all backdrop-blur-md"><ArrowPathIcon className="w-4 h-4 text-white" /><span className="text-[10px] text-white font-bold uppercase">{t("homework.mode_study")}</span></button>
                                 {activeProject && <div className="flex items-center gap-2 bg-cyan-900/30 border border-cyan-500/30 px-4 py-2 rounded-2xl backdrop-blur-md"><BeakerIcon className="w-4 h-4 text-cyan-400" /><span className="text-[10px] text-cyan-100 font-bold uppercase truncate max-w-[150px]">{activeProject.title}</span></div>}
                             </div>
-                            <div ref={workChatRef} className="flex-1 relative p-6 overflow-y-auto custom-scrollbar flex flex-col z-0 pt-16">
-                                <div className="flex-1" />
-                                <div className="space-y-6 pb-2">
-                                    {/* HERE IS THE FIX: RENDER WORK CHAT HISTORY */}
-                                    {workChatHistory.map((msg, i) => (<div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm font-light shadow-lg relative ${msg.role === 'user' ? 'bg-cyan-900/40 text-cyan-50 border border-cyan-500/30' : 'bg-[#0a0a0a]/80 text-white/90 border border-white/10'}`}>{msg.text}</div></div>))}
-                                    {isTyping && <div className="flex justify-start"><div className="bg-[#0a0a0a]/60 border border-white/5 px-4 py-2 rounded-xl flex gap-1"><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" /></div></div>}
+
+                            {activeWorkTool === 'citations' ? (
+                                // --- CITATIONS VIEWER (WORK MODE) ---
+                                <div className="flex-1 p-8 pt-20 overflow-y-auto custom-scrollbar">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><DocumentTextIcon className="w-6 h-6 text-cyan-400"/> Saved Citations</h3>
+                                        {citationContent && (
+                                            <button onClick={() => copyToClipboard(citationContent)} className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-white transition-colors flex items-center gap-2">
+                                                <ClipboardDocumentIcon className="w-4 h-4" /> Copy All
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="bg-[#0a0a0a]/50 p-6 rounded-2xl border border-white/10 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                        {citationContent ? citationContent : <span className="italic opacity-50">No citations loaded from Study Mode yet. Go back and generate some!</span>}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="p-5 bg-black/60 border-t border-white/10 flex flex-col gap-3 shrink-0 backdrop-blur-xl z-20 relative rounded-b-[24px]">
-                                <div className="flex gap-3 items-center"><input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder="Ask the system..." className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" /><button type="button" onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">Send</button></div>
-                            </div>
+                            ) : (
+                                // --- CHAT VIEW (WORK MODE) ---
+                                <>
+                                    <div ref={workChatRef} className="flex-1 relative p-6 overflow-y-auto custom-scrollbar flex flex-col z-0 pt-16">
+                                        <div className="flex-1" />
+                                        <div className="space-y-6 pb-2">
+                                            {workChatHistory.map((msg, i) => (<div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm font-light shadow-lg relative ${msg.role === 'user' ? 'bg-cyan-900/40 text-cyan-50 border border-cyan-500/30' : 'bg-[#0a0a0a]/80 text-white/90 border border-white/10'}`}>{msg.text}</div></div>))}
+                                            {isTyping && <div className="flex justify-start"><div className="bg-[#0a0a0a]/60 border border-white/5 px-4 py-2 rounded-xl flex gap-1"><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" /></div></div>}
+                                        </div>
+                                    </div>
+                                    <div className="p-5 bg-black/60 border-t border-white/10 flex flex-col gap-3 shrink-0 backdrop-blur-xl z-20 relative rounded-b-[24px]">
+                                        <div className="flex gap-3 items-center"><input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder="Ask the system..." className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" /><button type="button" onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">SUBMIT</button></div>
+                                    </div>
+                                </>
+                            )}
                         </div>
+
+                        {/* RIGHT PANEL: DOC & TERMINAL */}
                         <div className="col-span-5 flex flex-col gap-4 h-full">
                             <div onClick={() => setActiveWorkSection('doc')} className={`${panelStyle} flex-1 flex flex-col ${activeWorkSection === 'doc' ? 'ring-1 ring-cyan-400/50' : ''}`}>
                                 <div className="h-14 bg-black/40 border-b border-white/10 flex items-center px-6"><input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className="bg-transparent text-white/90 text-sm font-mono focus:outline-none w-full" /></div>
