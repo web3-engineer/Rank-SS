@@ -6,9 +6,7 @@ import path from 'path';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// --- 1. PROTOCOLO DE AGENDA (O Segredo para alterar os Cards) ---
-// Todos os agentes recebem isso. Se o usuário pedir para mudar a aula,
-// o agente sabe que deve responder APENAS JSON.
+// --- 1. PROTOCOLO DE AGENDA ---
 const SCHEDULE_PROTOCOL = `
 [SYSTEM CAPABILITY: CLASS SCHEDULE MANAGEMENT]
 You have read/write access to the user's Weekly Schedule.
@@ -61,6 +59,20 @@ const AGENT_PERSONAS: Record<string, string> = {
         Role: Solve complex problems and explain theories.
         Focus: Calculus, Quantum Mechanics, Relativity, Linear Algebra.
         Tone: Logical, step-by-step, precise.
+    `,
+
+    // --- [NOVO] EXAM GENERATOR ---
+    // Este agente é "lobotomizado": sem personalidade, apenas função técnica.
+    exam_generator: `
+        ROLE: You are a strict JSON Generator for Academic Assessments.
+        TASK: Read the provided [CURRENT LIVE SCHEDULE DATA], extract the subjects/topics, and generate exam questions based on them.
+        
+        CRITICAL RULES:
+        1. Output MUST be a valid JSON Array.
+        2. NO conversational text (No "Here is your exam", no "Good luck").
+        3. NO markdown formatting (No \`\`\`json blocks).
+        4. Structure: [{ "id": number, "type": "choice"|"input", "question": string, "options": string[], "correctAnswer": string, "difficulty": "easy"|"medium"|"hard" }]
+        5. If the schedule is empty or topics are unclear, generate general logic/math questions.
     `
 };
 
@@ -71,7 +83,7 @@ export async function POST(req: Request) {
         // Recebemos também 'systemContext' (que é o JSON da agenda atual vindo do front)
         const { prompt, agent, fileData, systemContext } = await req.json();
 
-        // --- AUTENTICAÇÃO (Sua versão funcional) ---
+        // --- AUTENTICAÇÃO (Mantida Intacta) ---
         let credentials;
         try {
             const keyFilePath = path.join(process.cwd(), 'service-account.json');
@@ -109,30 +121,38 @@ export async function POST(req: Request) {
 
         console.log(`🤖 Vertex AI Conectado. Agente solicitado: ${agent}`);
         
-        // Usando o modelo que funcionou pra você
         const model = vertex_ai.getGenerativeModel({ model: "gemini-2.0-flash-001" });
 
         // --- CONSTRUÇÃO DO "CÉREBRO" ---
-        // 1. Escolhe a personalidade base (ou usa Aura por padrão)
+        // 1. Escolhe a personalidade base
         const selectedPersona = AGENT_PERSONAS[agent?.toLowerCase()] || AGENT_PERSONAS.aura;
 
-        // 2. Monta a Instrução de Sistema Final
-        // (Protocolo de Agenda + Personalidade + Contexto Atual da Agenda)
-        let finalSystemInstruction = `
-            ${SCHEDULE_PROTOCOL}
-            
-            --- IDENTITY PROTOCOL ---
-            ${selectedPersona}
-        `;
+        // 2. Monta a Instrução. 
+        // LÓGICA DE JUSTIFICATIVA: Se for o 'exam_generator', não injetamos o SCHEDULE_PROTOCOL padrão,
+        // pois ele pode confundir a geração estrita de JSON com regras de chat.
+        let finalSystemInstruction;
 
-        // 3. Se o frontend mandou a agenda atual (JSON), injetamos aqui para o agente "ver"
+        if (agent === 'exam_generator') {
+             finalSystemInstruction = `
+                ${selectedPersona}
+            `;
+        } else {
+            // Para todos os outros (Aura, Helix, etc), mantemos o protocolo de agenda + persona
+            finalSystemInstruction = `
+                ${SCHEDULE_PROTOCOL}
+                --- IDENTITY PROTOCOL ---
+                ${selectedPersona}
+            `;
+        }
+
+        // 3. O 'systemContext' (JSON da Agenda) é injetado para TODOS.
+        // A Aura usa para editar a agenda. O Exam Generator usa para criar perguntas sobre o tema.
         if (systemContext) {
             finalSystemInstruction += `\n\n[CURRENT LIVE SCHEDULE DATA]:\n${systemContext}`;
         }
 
         const parts: any[] = [];
         
-        // Injeta a instrução de sistema no prompt
         parts.push({ text: `SYSTEM INSTRUCTIONS:\n${finalSystemInstruction}` });
 
         if (fileData) {
