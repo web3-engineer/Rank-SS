@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronUp, ChevronDown, Layers, MapPin, User, Activity, Clock, X, AlertCircle, Sparkles, Send, Mic } from 'lucide-react';
+import { MapPin, User, Activity, Clock, X, AlertCircle, Sparkles, Send, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- INITIAL DATA ---
+// --- INITIAL DATA (Fallback) ---
 const initialSchedule = [
   { id: 1, name: "Systems Arch.", teacher: "Dr. Aris", room: "Lab 402", days: [1, 3], hour: 8, color: "from-cyan-400 to-blue-500" },
   { id: 2, name: "Neural Nets", teacher: "Prof. Sarah", room: "Hall B", days: [1, 3], hour: 10, color: "from-blue-500 to-indigo-600" },
@@ -18,59 +18,85 @@ const initialSchedule = [
 export default function LessonsModule() {
   const [showYearBoard, setShowYearBoard] = useState(true);
   
-  // State principal da Agenda (Mutável pelo Agente)
+  // --- STATE ---
   const [classes, setClasses] = useState(initialSchedule);
   const [selectedClass, setSelectedClass] = useState(initialSchedule[0]);
-  
-  // Sticky Note State
   const [showSticky, setShowSticky] = useState(true);
   const [stickyText, setStickyText] = useState("");
-
-  // References
-  const constraintsRef = useRef(null);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-
-  // Chat Agent States
   const [chatHistory, setChatHistory] = useState<{role: 'user' | 'ai', text: string}[]>([
     { role: 'ai', text: "Hello. I am managing your academic schedule. How can I modify it for you today?" }
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // --- SAFETY FLAG (Prevents overwriting data on load) ---
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // --- PERSISTÊNCIA DE DADOS (MEMORY CORE) ---
-  // 1. Carregar dados salvos ao iniciar
+  // References
+  const constraintsRef = useRef(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // --- 1. LOAD DATA (RUNS ONCE ON MOUNT) ---
   useEffect(() => {
     if (typeof window !== 'undefined') {
-        const savedClasses = localStorage.getItem('zaeon_schedule_data');
-        const savedChat = localStorage.getItem('zaeon_chat_history');
-        const savedSticky = localStorage.getItem('zaeon_sticky_note');
+        try {
+            const savedClasses = localStorage.getItem('zaeon_schedule_data');
+            const savedChat = localStorage.getItem('zaeon_chat_history');
+            const savedSticky = localStorage.getItem('zaeon_sticky_note');
 
-        if (savedClasses) setClasses(JSON.parse(savedClasses));
-        if (savedChat) setChatHistory(JSON.parse(savedChat));
-        if (savedSticky) setStickyText(savedSticky);
+            if (savedClasses) {
+                console.log("📥 Loaded Schedule from Memory");
+                setClasses(JSON.parse(savedClasses));
+            }
+            if (savedChat) {
+                setChatHistory(JSON.parse(savedChat));
+            }
+            if (savedSticky) {
+                setStickyText(savedSticky);
+            }
+        } catch (error) {
+            console.error("Failed to load local data:", error);
+        } finally {
+            // CRITICAL: Only allow saving AFTER we tried loading
+            setIsDataLoaded(true);
+        }
     }
   }, []);
 
-  // 2. Salvar dados automaticamente quando mudam
-  useEffect(() => { localStorage.setItem('zaeon_schedule_data', JSON.stringify(classes)); }, [classes]);
-  useEffect(() => { localStorage.setItem('zaeon_chat_history', JSON.stringify(chatHistory)); }, [chatHistory]);
-  useEffect(() => { localStorage.setItem('zaeon_sticky_note', stickyText); }, [stickyText]);
+  // --- 2. SAVE DATA (RUNS ONLY IF DATA IS LOADED) ---
+  useEffect(() => {
+    if (isDataLoaded) {
+        localStorage.setItem('zaeon_schedule_data', JSON.stringify(classes));
+    }
+  }, [classes, isDataLoaded]);
 
-  // Scroll automático do chat
+  useEffect(() => {
+    if (isDataLoaded) {
+        localStorage.setItem('zaeon_chat_history', JSON.stringify(chatHistory));
+    }
+  }, [chatHistory, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded) {
+        localStorage.setItem('zaeon_sticky_note', stickyText);
+    }
+  }, [stickyText, isDataLoaded]);
+
+
+  // Auto-scroll chat
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
   }, [chatHistory]);
 
-  // Mock de 365 dias
+  // Mock Date Data
   const yearSquares = Array.from({ length: 365 }, (_, i) => Math.floor(Math.random() * 4));
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   const hours = Array.from({ length: 9 }, (_, i) => i + 8);
-
   const formatTime = (h: number) => `${h.toString().padStart(2, '0')}:00 - ${(h + 2).toString().padStart(2, '0')}:00`;
 
-  // --- LÓGICA DO AGENTE INTELIGENTE ---
+  // --- AGENT LOGIC ---
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -100,7 +126,6 @@ export default function LessonsModule() {
         
         if (cleanResponse.startsWith('[') && cleanResponse.endsWith(']')) {
             const newSchedule = JSON.parse(cleanResponse);
-            
             if (Array.isArray(newSchedule)) {
                 setClasses(newSchedule);
                 setChatHistory(prev => [...prev, { role: 'ai', text: "Schedule updated successfully via Neural Link." }]);
@@ -123,7 +148,7 @@ export default function LessonsModule() {
   return (
     <div ref={constraintsRef} className="relative min-h-screen w-full flex flex-col items-center p-8 bg-transparent font-sans selection:bg-cyan-500/30">
       
-      {/* --- SECTION 1: ANNUAL FLOW (Maintained Header) --- */}
+      {/* ANNUAL FLOW */}
       <section className="w-full max-w-[1400px] z-10 transition-all duration-700 pointer-events-auto">
         <div className="flex justify-between items-center px-4 mb-4">
           <div className="flex items-center gap-3">
@@ -163,25 +188,22 @@ export default function LessonsModule() {
 
       <div className="h-24 pointer-events-none"></div>
 
-      {/* --- SECTION 2: DRAGGABLE CARDS --- */}
+      {/* DRAGGABLE CARDS */}
       <div className="flex justify-center gap-8 flex-wrap z-20 relative w-full h-full items-start">
 
-        {/* 1. AGENT CHAT (MOVED TO FIRST) */}
+        {/* 1. AGENT CHAT */}
         <motion.div
           drag
           dragConstraints={constraintsRef}
           whileHover={{ scale: 1.02, cursor: "grab" }}
           whileDrag={{ scale: 1.05, cursor: "grabbing", zIndex: 100 }}
-          className="group w-72 h-[340px] relative" // Altura alinhada com agenda
+          className="group w-72 h-[340px] relative"
         >
-             {/* Glow Roxo/Azul para o Agente */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-cyan-500/10 rounded-[2.5rem] blur-xl opacity-50 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
 
             <div className="w-full h-full bg-[#0a0a0a]/90 backdrop-blur-2xl border border-white/10 p-5 rounded-[2.5rem] 
                             shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_20px_40px_-10px_rgba(0,0,0,0.8)]
                             flex flex-col relative overflow-hidden">
-                
-                {/* Header */}
                 <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-2 z-10">
                     <div className="flex items-center gap-2">
                         <Sparkles size={12} className="text-cyan-400" />
@@ -189,8 +211,6 @@ export default function LessonsModule() {
                     </div>
                     {isProcessing && <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-ping"></div>}
                 </div>
-
-                {/* Chat Area */}
                 <div ref={chatScrollRef} className="flex-1 overflow-y-auto scrollbar-hide space-y-3 pr-1 py-2 z-10">
                     {chatHistory.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -205,22 +225,22 @@ export default function LessonsModule() {
                     {isProcessing && (
                          <div className="flex justify-start">
                              <div className="bg-white/5 px-3 py-2 rounded-2xl flex gap-1 items-center border border-white/5">
-                                 <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce"></span>
-                                 <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce [animation-delay:0.1s]"></span>
-                                 <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                                 <div className="flex gap-1">
+                                    <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce"></span>
+                                    <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce [animation-delay:0.1s]"></span>
+                                    <span className="w-1 h-1 bg-white/50 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                                 </div>
                              </div>
                          </div>
                     )}
                 </div>
-
-                {/* Input Area */}
                 <div className="mt-2 pt-2 border-t border-white/5 flex gap-2 z-10">
                     <input 
                         value={inputMessage}
                         onChange={(e) => setInputMessage(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                         disabled={isProcessing}
-                        placeholder="Move Ethics to Tuesday..."
+                        placeholder="Change CyberSec to Friday..."
                         className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-500/50 transition-colors"
                     />
                     <button 
@@ -231,26 +251,22 @@ export default function LessonsModule() {
                         <Send size={12} />
                     </button>
                 </div>
-
-                {/* Background Decor */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-cyan-500/5 rounded-full blur-[40px] pointer-events-none"></div>
             </div>
         </motion.div>
 
-        {/* 2. SCHEDULE (MOVED TO SECOND) */}
+        {/* 2. SCHEDULE */}
         <motion.div
           drag
           dragConstraints={constraintsRef}
           whileHover={{ scale: 1.01, cursor: "grab" }}
           whileDrag={{ scale: 1.05, cursor: "grabbing", zIndex: 100, shadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)" }}
-          className="group w-80 h-[340px] relative" // Aumentei um pouco a altura para acomodar mais aulas se precisar
+          className="group w-80 h-[340px] relative"
         >
           <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 rounded-[2.5rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
           <div className="w-full h-full bg-black/40 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] 
                             shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_20px_40px_-10px_rgba(0,0,0,0.6)]
                             flex flex-col items-center justify-between relative overflow-hidden">
-
             <div className="w-full flex justify-between items-center mb-2 pointer-events-none">
               <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40">Weekly Agenda</span>
               <div className="flex gap-1">
@@ -258,17 +274,13 @@ export default function LessonsModule() {
                 <div className="w-1.5 h-1.5 rounded-full bg-white/20"></div>
               </div>
             </div>
-
-            {/* Grid Dinâmico */}
             <div className="w-full flex gap-3 justify-between h-full pointer-events-none">
               {days.map((day, dIdx) => (
                 <div key={day} className="flex flex-col gap-[3px] h-full flex-1 items-center">
                   <div className="flex-1 flex flex-col justify-between w-full pointer-events-auto">
                     {hours.map((hour) => {
-                      // Procura na state 'classes'
                       const classAtTime = classes.find(c => c.days.includes(dIdx + 1) && c.hour === hour);
                       const isSelected = classAtTime && selectedClass.name === classAtTime.name;
-
                       return (
                         <div
                           key={`${day}-${hour}`}
@@ -279,7 +291,6 @@ export default function LessonsModule() {
                               : 'bg-white/5 hover:bg-white/10'
                             }`}
                         >
-                            {/* Tooltip ao passar o mouse */}
                             {classAtTime && (
                                 <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-1 rounded text-[8px] text-white opacity-0 group-hover/cell:opacity-100 pointer-events-none whitespace-nowrap z-20">
                                     {classAtTime.name}
@@ -296,7 +307,7 @@ export default function LessonsModule() {
           </div>
         </motion.div>
 
-        {/* 3. DETAILS (MOVED TO THIRD) */}
+        {/* 3. DETAILS */}
         <motion.div
           drag
           dragConstraints={constraintsRef}
@@ -305,14 +316,10 @@ export default function LessonsModule() {
           className="group w-52 h-52 relative"
         >
           <div className={`absolute inset-0 bg-gradient-to-br ${selectedClass.color} opacity-20 rounded-[2.5rem] blur-2xl transition-all duration-700 pointer-events-none`}></div>
-
           <div className="w-full h-full bg-black/40 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] 
                             shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_20px_40px_-10px_rgba(0,0,0,0.6)]
                             flex flex-col justify-between relative overflow-hidden">
-
             <div className={`absolute -top-10 -right-10 w-32 h-32 bg-gradient-to-br ${selectedClass.color} rounded-full blur-[40px] opacity-40 animate-pulse pointer-events-none`}></div>
-
-            {/* Header: Sala */}
             <div className="relative z-10 flex justify-between items-start pointer-events-none">
               <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-full border border-white/5">
                 <MapPin size={10} className="text-white/80" />
@@ -320,8 +327,6 @@ export default function LessonsModule() {
               </div>
               <div className={`w-2 h-2 rounded-full bg-gradient-to-r ${selectedClass.color} shadow-[0_0_10px_currentColor]`}></div>
             </div>
-
-            {/* Main: Title & Time */}
             <div className="relative z-10 pointer-events-none mt-2">
               <h2 className="text-sm font-bold text-white leading-tight drop-shadow-md mb-2">{selectedClass.name}</h2>
               <div className="flex items-center gap-1.5 text-cyan-300">
@@ -331,8 +336,6 @@ export default function LessonsModule() {
                 </span>
               </div>
             </div>
-
-            {/* Footer: Mentor */}
             <div className="relative z-10 bg-white/5 border border-white/10 p-2 rounded-xl flex items-center gap-2 backdrop-blur-md pointer-events-none mt-auto">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-white/10 to-transparent flex items-center justify-center text-white/70 shrink-0">
                 <User size={10} />
@@ -347,7 +350,7 @@ export default function LessonsModule() {
           </div>
         </motion.div>
 
-        {/* 4. STICKY NOTE (LAST - PERSISTENT & EDITABLE) */}
+        {/* 4. STICKY NOTE */}
         <AnimatePresence>
           {showSticky && (
             <motion.div
@@ -358,23 +361,19 @@ export default function LessonsModule() {
               className="group w-40 h-40 relative"
             >
                 <div className="absolute inset-0 bg-yellow-500/10 rounded-[2rem] blur-xl transition-opacity duration-700 pointer-events-none"></div>
-
                 <div className="w-full h-full bg-yellow-900/10 backdrop-blur-xl border border-yellow-500/10 p-5 rounded-[2rem] 
                                 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_15px_30px_-10px_rgba(0,0,0,0.5)]
                                 flex flex-col justify-between relative overflow-hidden">
-                    
                     <button 
                         onClick={() => setShowSticky(false)}
                         className="absolute top-3 right-3 text-white/20 hover:text-white transition-colors opacity-0 group-hover:opacity-100 z-20"
                     >
                         <X size={14} />
                     </button>
-
                     <div className="flex items-center gap-2 text-yellow-500/80 mb-2">
                         <AlertCircle size={12} />
                         <span className="text-[8px] font-bold uppercase tracking-widest">Note</span>
                     </div>
-
                     <textarea 
                         value={stickyText}
                         onChange={(e) => setStickyText(e.target.value)}
@@ -382,7 +381,6 @@ export default function LessonsModule() {
                         placeholder="Write something..."
                         onPointerDown={(e) => e.stopPropagation()} 
                     />
-
                     <div className="h-0.5 w-12 bg-yellow-500/20 rounded-full mt-auto self-end pointer-events-none"></div>
                 </div>
             </motion.div>
@@ -390,17 +388,6 @@ export default function LessonsModule() {
         </AnimatePresence>
 
       </div>
-
-      {/* FOOTER */}
-      <div className="mt-12 pointer-events-auto">
-        <button className="group relative px-6 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 backdrop-blur-md transition-all">
-          <span className="text-[9px] uppercase tracking-[0.3em] text-white/50 group-hover:text-white transition-colors">
-            Limited Access
-          </span>
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full duration-1000 transition-transform"></div>
-        </button>
-      </div>
-
     </div>
   );
 }
