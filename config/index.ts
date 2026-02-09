@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const siteConfig: Metadata = {
   title: "Zaeon",
-  description: "AI Agents that educate",
+  description: "Agents built for a  New You.",
   keywords: [
     "reactjs",
     "nextjs",
@@ -13,8 +13,6 @@ export const siteConfig: Metadata = {
     "react-icons",
     "cn",
     "clsx",
-    "3d-portfolio",
-    "3d-website",
     "sonner",
     "framer-motion",
     "motion",

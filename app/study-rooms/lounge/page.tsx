@@ -5,9 +5,9 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence, Reorder } from "framer-motion"; 
 import {
     BookOpenIcon, UsersIcon, BeakerIcon,
-    XMarkIcon, NewspaperIcon, GlobeAmericasIcon,
+    XMarkIcon, GlobeAmericasIcon,
     CpuChipIcon, ClipboardDocumentCheckIcon,
-    EyeIcon, EyeSlashIcon // Added Icons for Focus Mode
+    EyeIcon, EyeSlashIcon
 } from "@heroicons/react/24/outline";
 
 import { Navbar } from "@/components/main/navbar";
@@ -41,8 +41,8 @@ const ExamsModule = dynamic(() => import("./main-lounge/exams/page"), { loading:
 const LessonsModule = dynamic(() => import("./main-lounge/lessons/page"), { loading: LoadingIcon }); 
 
 // Módulos Públicos
-const ResearchModule = dynamic(() => import("./main-lounge/research/page"), { loading: LoadingIcon });
-const NewsModule = dynamic(() => import("./main-lounge/news/page"), { loading: LoadingIcon });
+// CHANGE: Renamed "NewsModule" import to reflect its new role as "Research", pointing to the previous news folder
+const ResearchModule = dynamic(() => import("./main-lounge/researches/page"), { loading: LoadingIcon });
 
 export default function LoungePageUS() {
     // --- 1. CONFIGURAÇÃO DAS ABAS ---
@@ -50,9 +50,9 @@ export default function LoungePageUS() {
         { id: 'lessons', label: 'Classes', icon: <BookOpenIcon className="w-5 h-5" /> },
         { id: 'exams', label: 'Exams', icon: <ClipboardDocumentCheckIcon className="w-5 h-5" /> },
         { id: 'projects', label: 'Projects', icon: <BeakerIcon className="w-5 h-5" /> },
+        // CHANGE: "Research" now uses the logic that was previously "News"
         { id: 'research', label: 'Research', icon: <CpuChipIcon className="w-5 h-5" /> },
         { id: 'community', label: 'Community', icon: <UsersIcon className="w-5 h-5" /> },
-        { id: 'news', label: 'News', icon: <NewspaperIcon className="w-5 h-5" /> },
     ]);
 
     const [activeTab, setActiveTab] = useState("lessons"); 
@@ -108,10 +108,9 @@ export default function LoungePageUS() {
                         </AnimatePresence>
                     </div>
                 );
+            // CHANGE: Maps 'research' tab to the module that was previously 'news'
             case "research":
                 return <ResearchModule />;
-            case "news":
-                return <NewsModule />;
             case "projects":
                 return <ProjectsModule />;
             case "exams":

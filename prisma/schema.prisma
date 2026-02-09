@@ -59,6 +59,7 @@ model UserSpaceData {
   schedule    Json?    // Array das aulas (JSON puro)
   chatHistory Json?    // Histórico do Chat (Array de objetos)
   stickyNote  String?  // Texto do post-it
+  activeProject Json?  // Projeto ativo
   
   updatedAt   DateTime @updatedAt
 }

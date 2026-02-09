@@ -2,6 +2,9 @@ import { VertexAI } from "@google-cloud/vertexai";
 import { NextResponse } from "next/server";
 import fs from 'fs';
 import path from 'path';
+import { getServerSession } from "next-auth"; 
+import { authOptions } from "@/src/lib/auth"; 
+import { prisma } from "@/src/lib/prisma"; 
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -62,7 +65,6 @@ const AGENT_PERSONAS: Record<string, string> = {
     `,
 
     // --- [NOVO] EXAM GENERATOR ---
-    // Este agente é "lobotomizado": sem personalidade, apenas função técnica.
     exam_generator: `
         ROLE: You are a strict JSON Generator for Academic Assessments.
         TASK: Read the provided [CURRENT LIVE SCHEDULE DATA], extract the subjects/topics, and generate exam questions based on them.
@@ -80,10 +82,37 @@ export async function POST(req: Request) {
     console.log("🚀 [API START] Iniciando Chat com Vertex AI...");
 
     try {
-        // Recebemos também 'systemContext' (que é o JSON da agenda atual vindo do front)
         const { prompt, agent, fileData, systemContext } = await req.json();
 
-        // --- AUTENTICAÇÃO (Mantida Intacta) ---
+        // --- 0. RECALL MECHANISM (Busca Projeto Ativo no Mongo) ---
+        let dbContext = "";
+        try {
+            const session = await getServerSession(authOptions);
+            const user = session?.user as any; 
+
+            if (user?.id) {
+                // FIX: Usamos 'as any' aqui para evitar o erro de tipagem caso o Prisma Client 
+                // ainda não tenha sido gerado com o novo campo 'activeProject'.
+                const userData = await prisma.userSpaceData.findUnique({
+                    where: { userId: user.id }
+                }) as any;
+
+                if (userData && userData.activeProject) {
+                    dbContext = `
+                    \n\n--- 🚀 ACTIVE PROJECT CONTEXT (FROM DATABASE) ---
+                    The user has initiated a research project. 
+                    You must act as a guide/research assistant for this specific topic:
+                    ${JSON.stringify(userData.activeProject, null, 2)}
+                    -----------------------------------
+                    `;
+                    console.log("✅ Project Context Injected from DB");
+                }
+            }
+        } catch (dbError) {
+            console.warn("⚠️ DB Context Recall falhou (continuando sem contexto):", dbError);
+        }
+
+        // --- AUTENTICAÇÃO GOOGLE (Mantida Intacta) ---
         let credentials;
         try {
             const keyFilePath = path.join(process.cwd(), 'service-account.json');
@@ -107,7 +136,7 @@ export async function POST(req: Request) {
             throw new Error("Falha na autenticação.");
         }
 
-        // --- CONEXÃO GOOGLE ---
+        // --- CONEXÃO VERTEX AI ---
         const vertex_ai = new VertexAI({
             project: "bright-task-474414-h3",
             location: "us-central1",
@@ -124,12 +153,8 @@ export async function POST(req: Request) {
         const model = vertex_ai.getGenerativeModel({ model: "gemini-2.0-flash-001" });
 
         // --- CONSTRUÇÃO DO "CÉREBRO" ---
-        // 1. Escolhe a personalidade base
         const selectedPersona = AGENT_PERSONAS[agent?.toLowerCase()] || AGENT_PERSONAS.aura;
 
-        // 2. Monta a Instrução. 
-        // LÓGICA DE JUSTIFICATIVA: Se for o 'exam_generator', não injetamos o SCHEDULE_PROTOCOL padrão,
-        // pois ele pode confundir a geração estrita de JSON com regras de chat.
         let finalSystemInstruction;
 
         if (agent === 'exam_generator') {
@@ -137,16 +162,19 @@ export async function POST(req: Request) {
                 ${selectedPersona}
             `;
         } else {
-            // Para todos os outros (Aura, Helix, etc), mantemos o protocolo de agenda + persona
+            // Para todos os outros, injetamos:
+            // 1. Protocolo de Agenda
+            // 2. Personalidade
+            // 3. Contexto do Projeto (Do Banco de Dados)
             finalSystemInstruction = `
                 ${SCHEDULE_PROTOCOL}
                 --- IDENTITY PROTOCOL ---
                 ${selectedPersona}
+                ${dbContext} 
             `;
         }
 
-        // 3. O 'systemContext' (JSON da Agenda) é injetado para TODOS.
-        // A Aura usa para editar a agenda. O Exam Generator usa para criar perguntas sobre o tema.
+        // Contexto local (do frontend)
         if (systemContext) {
             finalSystemInstruction += `\n\n[CURRENT LIVE SCHEDULE DATA]:\n${systemContext}`;
         }

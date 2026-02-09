@@ -28,21 +28,8 @@ const NavbarComponent = () => {
   }
 
   // --- LÓGICA DE PERMISSÃO E VISIBILIDADE ---
-  const user = session?.user as any;
-  const role = user?.role;
-  const email = user?.email?.toLowerCase();
-
-  const isFounder = email === "donmartinezcaiudoceu@gmail.com";
-  const isSessionAdmin = user?.isAdmin === true;
-  const isSuperUser = isFounder || isSessionAdmin;
-
-  const isProGroup = role === "professional" || role === "entrepreneur";
-
-  // --- ALTERADO: Botão Homework sempre visível para todos ---
+  // Apenas mantendo homework visível
   const showHomework = true; 
-  
-  // Workstation continua restrita (ou mude para true se quiser liberar também)
-  const showWorkstation = isSuperUser || isProGroup;
 
   const isActive = (path: string) => {
     if (path === "/") return pathname === "/";
@@ -82,16 +69,10 @@ const NavbarComponent = () => {
               {t("navbar.study_rooms")}
             </Link>
 
-            {/* Link Homework agora sempre renderiza porque showHomework é true */}
+            {/* Link Homework sempre renderiza */}
             {showHomework && (
                 <Link href="/homework" className={getLinkClassName("/homework")}>
                   {t("navbar.homework")}
-                </Link>
-            )}
-
-            {showWorkstation && (
-                <Link href="/workstation" className={getLinkClassName("/workstation")}>
-                  {t("navbar.workstation")}
                 </Link>
             )}
           </nav>
@@ -120,12 +101,6 @@ const NavbarComponent = () => {
               {showHomework && (
                   <Link href="/homework" className={`py-3 w-full text-center rounded-lg ${isActive("/homework") ? "text-cyan-500 font-bold" : ""}`} onClick={() => setIsMobileMenuOpen(false)}>
                     {t("navbar.homework")}
-                  </Link>
-              )}
-
-              {showWorkstation && (
-                  <Link href="/workstation" className={`py-3 w-full text-center rounded-lg ${isActive("/workstation") ? "text-cyan-500 font-bold" : ""}`} onClick={() => setIsMobileMenuOpen(false)}>
-                    {t("navbar.workstation")}
                   </Link>
               )}
             </div>

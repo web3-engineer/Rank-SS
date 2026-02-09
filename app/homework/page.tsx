@@ -3,79 +3,36 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import "@/src/i18n";
 
+// --- ASSETS ---
+import { uploadToPinata } from "@/src/utils/ipfs";
+
 // --- IMPORTS ---
 import { Navbar } from "@/components/main/navbar";
 
-// --- IMPORTS DA WORKSTATION ---
-import { uploadToPinata } from "@/src/utils/ipfs";
-import zoxImage from "@/app/workstation/zox.png";
-import ethernautImage from "@/app/workstation/ethernaut.png";
-import ballenaImage from "@/app/workstation/ballena.png";
-
+// --- ICONS ---
 import {
     PlusIcon, ChevronRightIcon, BookmarkIcon,
     VideoCameraIcon, ClipboardIcon, SparklesIcon, TrashIcon,
-    EyeIcon, PowerIcon, PaperAirplaneIcon, UserCircleIcon,
+    PaperAirplaneIcon, UserCircleIcon,
     ArrowPathIcon, CommandLineIcon, HeartIcon, CalculatorIcon,
-    ChevronUpIcon, ArrowDownTrayIcon, PlayIcon, DocumentDuplicateIcon,
+    ArrowDownTrayIcon, PlayIcon,
     RocketLaunchIcon, XMarkIcon, ArrowsRightLeftIcon,
-    BookOpenIcon, DocumentTextIcon, PlayCircleIcon
+    BookOpenIcon, DocumentTextIcon, PlayCircleIcon,
+    EyeIcon, PowerIcon
 } from "@heroicons/react/24/outline";
 
-import MatrixRain from "@/components/main/star-background";
+// --- COMPONENTS ---
 import ResearchCardPDF from "@/components/ui/ResearchCardPDF";
 
+// --- TYPES ---
 interface StudyDoc { id: string; title: string; url: string; file?: File; }
 interface VideoItem { id: string; youtubeId: string; }
 
-// --- CONFIGURAÇÃO DE AGENTES ---
-const AGENTS = {
-    zenita: {
-        name: "Zenita",
-        roleKey: "agents.zenita.role",
-        icon: CommandLineIcon,
-        color: "text-cyan-400",
-        bg: "bg-cyan-500/20",
-        border: "border-cyan-500/50",
-        image: zoxImage,
-        boosterImage: "/assets/zenitta-booster.png",
-        widthClass: "w-64",
-        contentPadding: "pl-[290px]"
-    },
-    ballena: {
-        name: "Ballena",
-        roleKey: "agents.ballena.role",
-        icon: HeartIcon,
-        color: "text-red-400",
-        bg: "bg-red-500/20",
-        border: "border-red-500/50",
-        image: ballenaImage,
-        boosterImage: "/assets/ballena-booster.png",
-        widthClass: "w-[260px]",
-        contentPadding: "pl-[290px]"
-    },
-    ethernaut: {
-        name: "Ethernaut",
-        roleKey: "agents.ethernaut.role",
-        icon: CalculatorIcon,
-        color: "text-purple-400",
-        bg: "bg-purple-500/20",
-        border: "border-purple-500/50",
-        image: ethernautImage,
-        boosterImage: "/assets/ethernaut-booster.png",
-        widthClass: "w-[260px]",
-        contentPadding: "pl-[290px]"
-    },
-};
-
-type AgentKey = keyof typeof AGENTS;
-
-// --- UTILITÁRIOS ---
+// --- UTILS ---
 const generateSafeId = () => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
@@ -83,7 +40,7 @@ const generateSafeId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 };
 
-// --- COMPONENTES AUXILIARES ---
+// --- SUB-COMPONENTS ---
 const IosLoader = ({ status }: { status: string }) => (
     <div className="flex flex-col items-center justify-center space-y-4 py-4">
         <div className="relative w-8 h-8">
@@ -104,6 +61,7 @@ const IosLoader = ({ status }: { status: string }) => (
 const ActionButton = ({ icon: Icon, label, onClick, colorClass = "hover:text-cyan-500" }: any) => (
     <div className="group relative flex flex-col items-center z-[50]">
         <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onClick(e); }}
             className={`p-2 bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full transition-all ${colorClass}`}
         >
@@ -115,9 +73,9 @@ const ActionButton = ({ icon: Icon, label, onClick, colorClass = "hover:text-cya
     </div>
 );
 
-// Componente do Botão do Menu Lateral (Workstation)
 const WorkstationMenuButton = ({ icon: Icon, label, isActive, onClick }: any) => (
     <button
+        type="button"
         onClick={onClick}
         className={`group relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 ${isActive ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
     >
@@ -130,23 +88,24 @@ const WorkstationMenuButton = ({ icon: Icon, label, isActive, onClick }: any) =>
 
 export default function HomeworkPage() {
     const { t } = useTranslation();
-    const router = useRouter();
     const { data: session, status } = useSession();
 
     const [mounted, setMounted] = useState(false);
-    const [isFocusMode, setIsFocusMode] = useState(false);
     const [isChatLeft, setIsChatLeft] = useState(false);
+    
+    // --- FOCUS MODE STATE ---
+    const [isFocusMode, setIsFocusMode] = useState(false);
 
-    // --- ESTADO DE MODO (STUDY vs WORK) ---
+    // --- VIEW MODE ---
     const [viewMode, setViewMode] = useState<"study" | "work">("study");
     const [isTransitioning, setIsTransitioning] = useState(false);
 
-    // Estados de Dados (Study)
+    // --- DATA STATES ---
     const [studyFiles, setStudyFiles] = useState<StudyDoc[]>([]);
     const [videos, setVideos] = useState<VideoItem[]>([]);
     const [activeSection, setActiveSection] = useState<string | null>(null);
 
-    // Estados de UI/Controle
+    // --- CHAT STATES ---
     const [chatHistory, setChatHistory] = useState<{role: 'ai' | 'user', text: string}[]>([]);
     const [isTyping, setIsTyping] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -154,9 +113,8 @@ export default function HomeworkPage() {
     const [activeFileContext, setActiveFileContext] = useState<string | null>(null);
     const [processingFileId, setProcessingFileId] = useState<string | null>(null);
 
-    // Estados da Workstation
+    // --- WORKSTATION STATES ---
     const [activeWorkSection, setActiveWorkSection] = useState<"doc" | "chat" | "terminal" | null>(null);
-    const [selectedAgent, setSelectedAgent] = useState<AgentKey>("zenita");
     const [activeWorkTool, setActiveWorkTool] = useState<"citations" | "stickbook" | "insights" | null>(null);
     const [docTitle, setDocTitle] = useState("Untitled_Research.txt");
     const [docContent, setDocContent] = useState("");
@@ -165,7 +123,7 @@ export default function HomeworkPage() {
     const [isBoosterOpen, setIsBoosterOpen] = useState(false);
     const [isSystemProcessing, setIsSystemProcessing] = useState(false);
 
-    // Refs
+    // --- REFS ---
     const fileInputRef = useRef<HTMLInputElement>(null);
     const mainScrollRef = useRef<HTMLDivElement>(null);
     const citationsRef = useRef<HTMLElement>(null);
@@ -173,15 +131,8 @@ export default function HomeworkPage() {
     const workChatRef = useRef<HTMLDivElement>(null);
     const terminalRef = useRef<HTMLDivElement>(null);
 
-    // --- BLINDAGEM DA PÁGINA: DESATIVADA (Acesso Público) ---
-    useEffect(() => {
-        // Não fazemos nada aqui, permitindo que a página carregue para todos.
-        // O status "loading" é tratado no render condicional abaixo para evitar flicker.
-    }, []);
-
     useEffect(() => { setMounted(true); }, []);
 
-    // Scroll inteligente do chat
     useEffect(() => {
         if (chatContainerRef.current) chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
         if (workChatRef.current) workChatRef.current.scrollTo({ top: workChatRef.current.scrollHeight, behavior: 'smooth' });
@@ -242,9 +193,11 @@ export default function HomeworkPage() {
         setChatHistory(prev => [...prev, { role: 'user', text: currentPrompt }]);
         setIsTyping(true);
         try {
-            const body = viewMode === 'study'
-                ? { prompt: currentPrompt, agent: "zenita", fileData: activeFileContext }
-                : { prompt: currentPrompt, agent: selectedAgent };
+            const body = { 
+                prompt: currentPrompt, 
+                agent: "aura", 
+                fileData: viewMode === 'study' ? activeFileContext : null 
+            };
 
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await response.json();
@@ -263,7 +216,6 @@ export default function HomeworkPage() {
 
     const handleSpecialistChat = (specialistId: number) => { window.open('https://chat.google.com', '_blank'); };
 
-    // --- LÓGICA WORK MODE ---
     const handleBoostAndSave = async () => {
         setIsSystemProcessing(true);
         addLog("🚀 Initiating System Synchronization...");
@@ -272,12 +224,11 @@ export default function HomeworkPage() {
             await new Promise(r => setTimeout(r, 1500));
             addLog("✅ Data Integrity Verified.");
 
-            // Se não tiver sessão (público), usa "anonymous_user"
             const userId = session?.user?.email || "anonymous_user";
             const res = await fetch('/api/workspace', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, title: docTitle, content: docContent, agent: selectedAgent, chatHistory, terminalLogs })
+                body: JSON.stringify({ userId, title: docTitle, content: docContent, agent: "aura", chatHistory, terminalLogs })
             });
 
             if (res.ok) {
@@ -294,45 +245,48 @@ export default function HomeworkPage() {
     };
 
     const handleGenerateProtocol = async () => {
-        const agent = AGENTS[selectedAgent];
         setIsSystemProcessing(true);
-        addLog(t("workstation.logs.gen_protocol", { name: agent.name }));
-        const generatedText = `RESEARCH: ${docTitle}\nAUTHOR: ${agent.name}\nDATE: ${new Date().toISOString()}\n\nANALYSIS: Verified by Zaeon Core.`;
+        addLog("⚙️ Generating Protocol via Zaeon Core...");
+        const generatedText = `RESEARCH: ${docTitle}\nAUTHOR: Zaeon Core\nDATE: ${new Date().toISOString()}\n\nANALYSIS: Verified by System.`;
         setDocContent(generatedText);
         try {
-            const ipfsHash = await uploadToPinata({ title: docTitle, topic: docTitle, agent: agent.name, content: generatedText });
+            const ipfsHash = await uploadToPinata({ title: docTitle, topic: docTitle, agent: "Zaeon Core", content: generatedText });
             if (ipfsHash) addLog(t("workstation.logs.ipfs_success", { hash: ipfsHash }));
         } catch (e) { addLog("❌ IPFS Failed."); } finally { setIsSystemProcessing(false); }
     };
 
-    // --- RENDERIZAÇÃO CONDICIONAL ---
     if (!mounted || status === "loading") {
-        return ( <div className="w-full h-screen bg-[#030014] flex items-center justify-center z-[999]"> <IosLoader status="LOADING ZAEON OS..." /> </div> );
+        return ( <div className="w-full h-full flex items-center justify-center z-[999] bg-transparent"> <IosLoader status="LOADING ZAEON OS..." /> </div> );
     }
 
-    // Removido o bloqueio "unauthenticated" aqui para liberar a página.
-
-    const activeConfig = AGENTS[selectedAgent];
     const panelStyle = "relative overflow-hidden backdrop-blur-2xl border border-white/10 shadow-[0_0_40px_rgba(34,211,238,0.12)] bg-[linear-gradient(135deg,rgba(7,38,77,0.4),rgba(11,58,164,0.3),rgba(7,38,77,0.4))] rounded-[24px] transition-all duration-300";
 
     return (
         <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); if(viewMode === 'study') handleFiles(e.dataTransfer.files); }}
-            className={`relative w-full h-screen transition-all duration-500 overflow-hidden flex flex-row ${isFocusMode ? 'z-[200] bg-[#030014]' : 'bg-[#f0f4f8] dark:bg-[#030014]'}`}
+            className={`relative w-full h-full transition-all duration-500 overflow-hidden flex flex-row z-[200] 
+                ${viewMode === 'work' ? 'bg-[#030014]' : 'bg-[#f0f4f8] dark:bg-[#030014]'}
+            `}
         >
-            <div className="absolute inset-0 z-0 pointer-events-none opacity-20"><MatrixRain /></div>
+            {/* --- NAVBAR (Hidden in Focus Mode) --- */}
+            <AnimatePresence>
+                {!isFocusMode && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="absolute top-0 w-full z-50"
+                    >
+                        <Navbar />
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-            {/* NAVBAR (Sempre mostra, removida apenas em Focus Mode) */}
-            {!isFocusMode && (
-                <div className="absolute top-0 w-full z-50">
-                    <Navbar />
-                </div>
-            )}
-
-            {/* BOTÃO DE INVERSÃO DE LAYOUT */}
+            {/* --- LAYOUT SWITCHER --- */}
             <div className="fixed top-4 right-4 z-[250]">
                 <button 
+                    type="button"
                     onClick={() => setIsChatLeft(!isChatLeft)} 
                     className="w-10 h-10 flex items-center justify-center rounded-full bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/10 backdrop-blur-md hover:scale-105 transition-all shadow-lg group"
                     title={isChatLeft ? "Mover chat para direita" : "Mover chat para esquerda"}
@@ -341,29 +295,50 @@ export default function HomeworkPage() {
                 </button>
             </div>
 
-            {/* LOADER DE TRANSIÇÃO (MAC SPLASH) */}
-            <AnimatePresence>
-                {isTransitioning && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[999] bg-[#030014] flex items-center justify-center">
-                        <IosLoader status={t("homework.switching")} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* SWITCH MODO FOCO */}
-            <div className="fixed top-4 right-17 z-[250] flex flex-col items-center">
-                <div onClick={() => setIsFocusMode(!isFocusMode)} className={`w-8 h-14 rounded-full border transition-all cursor-pointer backdrop-blur-xl flex flex-col items-center p-1 ${isFocusMode ? "bg-cyan-900/80 border-cyan-500/50 shadow-lg" : "bg-white/80 border-slate-300 dark:bg-white/10"}`}>
-                    <motion.div className={`w-5 h-5 rounded-full flex items-center justify-center ${isFocusMode ? "bg-cyan-400 text-black" : "bg-slate-400 text-white"}`} animate={{ y: isFocusMode ? 0 : 26 }}>
+            {/* --- FOCUS TOGGLE BUTTON --- */}
+            <div className="fixed top-4 right-16 z-[250] flex flex-col items-center">
+                <div 
+                    onClick={() => setIsFocusMode(!isFocusMode)} 
+                    className={`w-8 h-14 rounded-full border transition-all cursor-pointer backdrop-blur-xl flex flex-col items-center p-1 ${isFocusMode ? "bg-cyan-900/80 border-cyan-500/50 shadow-lg" : "bg-white/80 border-slate-300 dark:bg-white/10"}`}
+                >
+                    <motion.div 
+                        className={`w-5 h-5 rounded-full flex items-center justify-center ${isFocusMode ? "bg-cyan-400 text-black" : "bg-slate-400 text-white"}`} 
+                        animate={{ y: isFocusMode ? 0 : 26 }}
+                    >
                         {isFocusMode ? <EyeIcon className="w-3 h-3" /> : <PowerIcon className="w-3 h-3" />}
                     </motion.div>
                 </div>
             </div>
 
-            {/* --- MODO ESTUDO (CLÁSSICO) --- */}
+            {/* --- MODE TRANSITION LOADER --- */}
+            <AnimatePresence>
+                {isTransitioning && (
+                    <motion.div 
+                        key="transition-loader"
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }} 
+                        className="absolute inset-0 z-[999] bg-black/90 flex items-center justify-center"
+                    >
+                        <IosLoader status={t("homework.switching")} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* --- STUDY MODE --- */}
             {viewMode === "study" && (
                 <>
+                    {/* Dark Overlay when Section is Active */}
                     <AnimatePresence>
-                        {(activeSection || isProcessing) && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[15] bg-black/20 backdrop-blur-[1px] pointer-events-none" />}
+                        {(activeSection || isProcessing) && (
+                            <motion.div 
+                                key="overlay"
+                                initial={{ opacity: 0 }} 
+                                animate={{ opacity: 1 }} 
+                                exit={{ opacity: 0 }} 
+                                className="absolute inset-0 z-[15] bg-black/20 backdrop-blur-[1px] pointer-events-none" 
+                            />
+                        )}
                     </AnimatePresence>
 
                     <input type="file" ref={fileInputRef} className="hidden" accept="application/pdf" multiple onChange={(e) => handleFiles(e.target.files)} />
@@ -372,23 +347,22 @@ export default function HomeworkPage() {
                         ref={mainScrollRef} 
                         onClick={() => setActiveSection(null)} 
                         className={`relative z-20 flex-1 h-full overflow-y-auto pb-40 custom-scrollbar space-y-12 transition-all duration-700 
-                        ${isFocusMode ? 'pt-10' : 'pt-[120px]'} 
+                        ${isFocusMode ? 'pt-10' : 'pt-[120px]'}
                         ${isProcessing ? 'blur-[4px] opacity-40' : ''}
                         ${isChatLeft ? 'pl-[460px] pr-8' : 'pr-[460px] pl-8'} 
                         `}
                     >
-
                         {/* 1. STUDY FILES */}
                         <section onClick={(e) => { e.stopPropagation(); setActiveSection('study'); }} className={`relative rounded-[41px] p-[1px] transition-all ${activeSection === 'study' ? 'z-[30]' : 'z-[10]'}`}>
                             <div className={`relative p-6 rounded-[40px] border transition-all ${activeSection === 'study' ? 'border-cyan-500 shadow-2xl bg-white' : 'border-slate-200 bg-slate-100/95 dark:bg-[#0f172a]/90'}`}>
                                 <div className="flex items-center gap-4 mb-6">
-                                    <button onClick={handleToggleMode} className="bg-cyan-500 hover:bg-cyan-400 text-white text-[10px] font-black px-4 py-1.5 rounded-lg uppercase tracking-widest shadow-lg flex items-center gap-2 transition-all hover:scale-105 active:scale-95">
+                                    <button type="button" onClick={handleToggleMode} className="bg-cyan-500 hover:bg-cyan-400 text-white text-[10px] font-black px-4 py-1.5 rounded-lg uppercase tracking-widest shadow-lg flex items-center gap-2 transition-all hover:scale-105 active:scale-95">
                                         <ArrowPathIcon className="w-3 h-3" />
                                         {t("homework.study_title")}
                                     </button>
                                     <span className="text-[10px] text-slate-400 uppercase tracking-widest">
-                                    {t("homework.switch_hint", { mode: t("homework.mode_work") })}
-                                </span>
+                                        {t("homework.switch_hint", { mode: t("homework.mode_work") })}
+                                    </span>
                                     <div className="ml-auto">
                                         <ActionButton
                                             icon={PlusIcon}
@@ -427,7 +401,7 @@ export default function HomeworkPage() {
                             </div>
                         </section>
 
-                        {/* 3. SPECIALISTS CHAT CARDS */}
+                        {/* 3. SPECIALISTS */}
                         <section className="grid grid-cols-2 gap-6">
                             {[1, 2].map((num) => {
                                 const isActive = activeSection === `specialist-${num}`;
@@ -449,7 +423,7 @@ export default function HomeworkPage() {
                                         <div className="p-4 bg-white dark:bg-[#0f172a] border-t border-slate-100 dark:border-white/5">
                                             <div className="relative flex items-center">
                                                 <input type="text" placeholder={t("homework.specialist_placeholder")} className="w-full bg-slate-100 dark:bg-white/5 rounded-full py-3 px-5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-700 dark:text-white" />
-                                                <button onClick={() => handleSpecialistChat(num)} className="absolute right-2 p-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-full hover:scale-105 transition-transform"><PaperAirplaneIcon className="w-3 h-3" /></button>
+                                                <button type="button" onClick={() => handleSpecialistChat(num)} className="absolute right-2 p-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-full hover:scale-105 transition-transform"><PaperAirplaneIcon className="w-3 h-3" /></button>
                                             </div>
                                         </div>
                                     </div>
@@ -470,7 +444,7 @@ export default function HomeworkPage() {
                                 {videos.map(vid => (
                                     <div key={vid.id} className="flex-shrink-0 w-[480px] h-[270px] bg-black rounded-[32px] overflow-hidden shadow-2xl relative group/vid border border-white/5">
                                         <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${vid.youtubeId}`} frameBorder="0" allowFullScreen />
-                                        <button onClick={() => setVideos(prev => prev.filter(v => v.id !== vid.id))} className="absolute top-4 right-4 p-2 bg-black/60 text-white rounded-full opacity-0 group-hover/vid:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4" /></button>
+                                        <button type="button" onClick={() => setVideos(prev => prev.filter(v => v.id !== vid.id))} className="absolute top-4 right-4 p-2 bg-black/60 text-white rounded-full opacity-0 group-hover/vid:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4" /></button>
                                     </div>
                                 ))}
                             </div>
@@ -506,7 +480,7 @@ export default function HomeworkPage() {
                         <div className="p-8 border-t border-slate-100 bg-white rounded-b-[40px]">
                             <div className="relative">
                                 <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder={activeFileContext ? t("homework.chat_placeholder") : t("homework.chat_empty")} disabled={isProcessing} className="w-full bg-white border border-slate-300 rounded-2xl py-4 px-6 text-[14px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
-                                <button onClick={handleUserQuestion} disabled={isTyping || isProcessing || !prompt.trim()} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black rounded-xl text-white hover:bg-slate-800 transition-colors disabled:opacity-50">
+                                <button type="button" onClick={handleUserQuestion} disabled={isTyping || isProcessing || !prompt.trim()} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black rounded-xl text-white hover:bg-slate-800 transition-colors disabled:opacity-50">
                                     <ChevronRightIcon className="w-4 h-4" />
                                 </button>
                             </div>
@@ -515,9 +489,9 @@ export default function HomeworkPage() {
                 </>
             )}
 
-            {/* --- MODO WORK (WORKSTATION INTEGRADO) --- */}
+            {/* --- WORK MODE --- */}
             {viewMode === "work" && (
-                <div className="z-20 w-full max-w-[1700px] h-[88vh] flex pt-28 px-4 gap-6"> 
+                <div className={`z-20 w-full max-w-[1700px] h-[95vh] flex px-4 gap-6 ${isFocusMode ? 'pt-6' : 'pt-28'}`}> 
                     
                     {/* MENU LATERAL (SIDEBAR) */}
                     <div className="relative w-16 flex flex-col items-center gap-6 py-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shrink-0 h-full z-[100]">
@@ -541,7 +515,6 @@ export default function HomeworkPage() {
                         />
                     </div>
 
-                    {/* GRID DE CONTEÚDO (Chat e Doc) */}
                     <div className="flex-1 grid grid-cols-12 gap-6 h-full">
                         {/* CHAT WINDOW */}
                         <div 
@@ -550,41 +523,23 @@ export default function HomeworkPage() {
                             ${isChatLeft ? 'order-first' : 'order-last'}
                             `}
                         >
-                            {/* TOGGLE BUTTON DENTRO DO WORK MODE */}
                             <div className="absolute top-4 left-4 z-40 flex gap-3">
-                                <button onClick={handleToggleMode} className="flex items-center gap-2 bg-white/5 border border-white/20 px-4 py-2 rounded-2xl hover:bg-white/10 transition-all backdrop-blur-md">
+                                <button type="button" onClick={handleToggleMode} className="flex items-center gap-2 bg-white/5 border border-white/20 px-4 py-2 rounded-2xl hover:bg-white/10 transition-all backdrop-blur-md">
                                     <ArrowPathIcon className="w-4 h-4 text-white" />
                                     <span className="text-[10px] text-white font-bold uppercase">{t("homework.mode_study")}</span>
                                 </button>
-                            </div>
-
-                            {/* AGENT RENDER (SEM MENU DE SELEÇÃO) */}
-                            <div className="absolute bottom-6 left-6 z-30 flex flex-col items-center">
-                                <div className={`relative transition-all duration-500 flex justify-center items-end ${activeConfig.widthClass} h-auto`}>
-                                    <AnimatePresence mode="wait">
-                                        {isImageLoading ? (
-                                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-48 w-full flex items-center justify-center">
-                                                <div className="animate-spin text-white/50 w-8 h-8 rounded-full border-2 border-white/20 border-t-cyan-500"></div>
-                                            </motion.div>
-                                        ) : (
-                                            <motion.div key={selectedAgent} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full flex justify-center">
-                                                <Image src={activeConfig.image} alt={activeConfig.name} className="w-full h-auto object-contain object-bottom drop-shadow-[0_0_35px_rgba(34,211,238,0.25)] max-h-[550px]" />
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
                             </div>
 
                             <div ref={workChatRef} className="flex-1 relative p-6 overflow-y-auto custom-scrollbar flex flex-col z-0 pt-16">
                                 <div className="flex-1" />
                                 <div className="space-y-6 pb-2">
                                     {chatHistory.map((msg, i) => (
-                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : `justify-start transition-all duration-300 ${activeConfig.contentPadding}`}`}>
+                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                             <div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm font-light shadow-lg relative ${msg.role === 'user' ? 'bg-cyan-900/40 text-cyan-50 border border-cyan-500/30' : 'bg-[#0a0a0a]/80 text-white/90 border border-white/10'}`}>{msg.text}</div>
                                         </div>
                                     ))}
                                     {isTyping && (
-                                        <div className={`flex justify-start transition-all duration-300 ${activeConfig.contentPadding}`}>
+                                        <div className="flex justify-start">
                                             <div className="bg-[#0a0a0a]/60 border border-white/5 px-4 py-2 rounded-xl flex gap-1"><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.1s]" /><span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" /></div>
                                         </div>
                                     )}
@@ -592,9 +547,9 @@ export default function HomeworkPage() {
                             </div>
 
                             <div className="p-5 bg-black/60 border-t border-white/10 flex flex-col gap-3 shrink-0 backdrop-blur-xl z-20 relative rounded-b-[24px]">
-                                <div className={`flex gap-3 items-center transition-all duration-300 ${activeConfig.contentPadding}`}>
-                                    <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder={t("workstation.chat_placeholder", { role: t(activeConfig.roleKey).toLowerCase() })} className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" />
-                                    <button onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">Send</button>
+                                <div className="flex gap-3 items-center">
+                                    <input type="text" value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUserQuestion()} placeholder="Ask the system..." className="flex-1 bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-white placeholder:text-white/40 focus:outline-none font-mono text-sm" />
+                                    <button type="button" onClick={handleUserQuestion} className="bg-cyan-500 text-black px-6 rounded-xl font-bold text-xs uppercase hover:bg-cyan-400 active:scale-95 transition-all h-11">Send</button>
                                 </div>
                             </div>
                         </div>
@@ -607,10 +562,10 @@ export default function HomeworkPage() {
                                 </div>
                                 <textarea value={docContent} onChange={(e) => setDocContent(e.target.value)} className="flex-1 p-8 font-mono text-sm text-slate-900 bg-[#f1f5f9] outline-none resize-none" />
                                 <div className="p-4 bg-[#f1f5f9] flex justify-end gap-3 rounded-b-[24px]">
-                                    <button onClick={() => setIsBoosterOpen(true)} className="px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 bg-blue-100 text-blue-700 border-blue-400 hover:bg-blue-200 uppercase tracking-wider">
+                                    <button type="button" onClick={() => setIsBoosterOpen(true)} className="px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 bg-blue-100 text-blue-700 border-blue-400 hover:bg-blue-200 uppercase tracking-wider">
                                         <ArrowDownTrayIcon className="w-4 h-4" /> {t("workstation.session_save")}
                                     </button>
-                                    <button onClick={handleGenerateProtocol} disabled={isSystemProcessing} className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 uppercase tracking-wider ${isSystemProcessing ? 'bg-yellow-100 text-yellow-700 border-yellow-400' : 'bg-green-100 text-green-700 border-green-400 hover:bg-green-200'}`}>
+                                    <button type="button" onClick={handleGenerateProtocol} disabled={isSystemProcessing} className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition flex items-center gap-2 uppercase tracking-wider ${isSystemProcessing ? 'bg-yellow-100 text-yellow-700 border-yellow-400' : 'bg-green-100 text-green-700 border-green-400 hover:bg-green-200'}`}>
                                         <PlayIcon className="w-4 h-4" /> {isSystemProcessing ? t("workstation.processing") : t("workstation.generate")}
                                     </button>
                                 </div>
@@ -639,24 +594,21 @@ export default function HomeworkPage() {
             <AnimatePresence>
                 {isBoosterOpen && (
                     <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBoosterOpen(false)} className="absolute inset-0 bg-[#030014]/90 backdrop-blur-md cursor-pointer" />
-                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 40 }} className="relative w-full max-w-5xl bg-[#0a0a0a] border border-cyan-500/20 rounded-[40px] overflow-hidden shadow-[0_0_100px_rgba(34,211,238,0.2)] flex flex-col md:flex-row min-h-[500px]">
-                            <button onClick={() => setIsBoosterOpen(false)} className="absolute top-6 right-6 z-50 text-white/30 hover:text-white transition-colors"><XMarkIcon className="w-6 h-6" /></button>
-                            <div className="w-full md:w-1/2 relative min-h-[400px] bg-black">
-                                <motion.div key={activeConfig.boosterImage} initial={{ opacity: 0, scale: 1.1, filter: "blur(20px)" }} animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} transition={{ duration: 0.8, ease: "easeOut" }} className="relative w-full h-full">
-                                    <Image src={activeConfig.boosterImage} alt="Neural Booster" fill className="object-cover" priority />
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#0a0a0a] hidden md:block" />
-                                </motion.div>
+                        <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBoosterOpen(false)} className="absolute inset-0 bg-[#030014]/90 backdrop-blur-md cursor-pointer" />
+                        <motion.div key="modal" initial={{ opacity: 0, scale: 0.9, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 40 }} className="relative w-full max-w-5xl bg-[#0a0a0a] border border-cyan-500/20 rounded-[40px] overflow-hidden shadow-[0_0_100px_rgba(34,211,238,0.2)] flex flex-col md:flex-row min-h-[500px]">
+                            <button type="button" onClick={() => setIsBoosterOpen(false)} className="absolute top-6 right-6 z-50 text-white/30 hover:text-white transition-colors"><XMarkIcon className="w-6 h-6" /></button>
+                            <div className="w-full md:w-1/2 relative min-h-[400px] bg-black flex items-center justify-center">
+                                <span className="text-white/20 text-xs tracking-widest uppercase">System Core</span>
                             </div>
                             <div className="w-full md:w-1/2 p-12 flex flex-col justify-center">
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-6"><RocketLaunchIcon className="w-3 h-3" /> System Uplink</div>
-                                <h2 className="text-4xl font-bold text-white mb-6 leading-tight">Sync {activeConfig.name}&apos;s <span className="text-cyan-400">Memory Core</span></h2>
+                                <h2 className="text-4xl font-bold text-white mb-6 leading-tight">Sync <span className="text-cyan-400">Memory Core</span></h2>
                                 <p className="text-slate-400 text-sm leading-relaxed mb-10">Securely persist your research session to the database.</p>
                                 <div className="flex flex-col gap-4">
-                                    <button onClick={handleBoostAndSave} disabled={isSystemProcessing} className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-4 rounded-2xl transition-all shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-3 uppercase tracking-widest text-xs group disabled:opacity-50">
+                                    <button type="button" onClick={handleBoostAndSave} disabled={isSystemProcessing} className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-4 rounded-2xl transition-all shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-3 uppercase tracking-widest text-xs group disabled:opacity-50">
                                         {isSystemProcessing ? <div className="animate-spin border-t-black border-2 w-5 h-5 rounded-full" /> : <><RocketLaunchIcon className="w-5 h-5 group-hover:scale-110 transition-transform" /> Save Session Data</>}
                                     </button>
-                                    <button onClick={() => setIsBoosterOpen(false)} className="w-full py-2 text-white/30 text-[10px] uppercase font-bold tracking-widest hover:text-white transition-colors">Back to Station</button>
+                                    <button type="button" onClick={() => setIsBoosterOpen(false)} className="w-full py-2 text-white/30 text-[10px] uppercase font-bold tracking-widest hover:text-white transition-colors">Back to Station</button>
                                 </div>
                             </div>
                         </motion.div>
