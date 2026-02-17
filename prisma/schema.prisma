@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
@@ -7,97 +10,128 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// --- MODELO DE USUÁRIO (O CORAÇÃO DO SISTEMA) ---
+// --- MODELO DE USUÁRIO ---
 model User {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   name          String?
   email         String?   @unique
   emailVerified DateTime?
-  image         String?   // Foto em Base64 ou URL
-
-  // --- DADOS DO MENU "OPTIONS" (PERFIL CUSTOM) ---
-  course        String?   // Ex: "Computer Science"
-  bio           String?   // Biografia curta
-
-  // --- DADOS DO MODAL DE "ONBOARDING" ---
-  role          String?   // "student", "researcher", etc.
-  phone         String?   // "(00) 00000-0000"
-  identityId    String?   // CPF, Matrícula, etc.
-  idType        String?   // "wallet" ou "role_id"
-  walletAddress String?   // Carteira Crypto
-
-  // --- DADOS DE COMPROVAÇÃO E ADMIN ---
+  image         String?   
+  
+  // Profile
+  course        String?   
+  bio           String?   
+  age           Int?
+  gender        String?
+  torsoImage    String?   
+  role          String?   
+  phone         String?   
+  
+  // Gamification
+  level         Int       @default(1)
+  streak        Int       @default(0)
+  xp            Int       @default(0)
+  
+  // Identity
+  identityId    String?   
+  idType        String?   
+  walletAddress String?   
+  
+  // Admin
   kycStatus     String    @default("pending")
-  documents     Json?     // Metadados dos PDFs
-  institution   String?   // Instituição de ensino
+  documents     Json?     
+  institution   String?   
 
-  // Datas de controle
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // --- RELACIONAMENTOS ---
+  // Relations
   accounts      Account[]
   sessions      Session[]
-  
-  // Relacionamento com o Feed
   posts         Post[]
   comments      Comment[]
-
-  // Relacionamento com a Área de Trabalho (Lounge)
   userSpaceData UserSpaceData?
 }
 
-// --- NOVO MODELO: MEMÓRIA DO LOUNGE & SALAS ---
+// --- MEMÓRIA DO LOUNGE & SALAS (ATUALIZADO) ---
 model UserSpaceData {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
   
-  // Conexão com o Usuário
-  userId      String   @unique @db.ObjectId
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String   @unique @db.ObjectId
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Dados Persistentes
-  schedule    Json?    // Array das aulas (JSON puro)
-  chatHistory Json?    // Histórico do Chat (Array de objetos)
-  stickyNote  String?  // Texto do post-it
-  activeProject Json?  // Projeto ativo
-  citations     Json?  // Citações geradas pelos agentes
-  workContent String?
-  workTitle String?
+  // --- STATE PERSISTENCE (Sincronizado com o Frontend) ---
+  
+  // 1. Layout & UI States (YearBoard toggle, Gadget On/Off, Plug Position, Sticky Visibility)
+  layoutState   Json?    // Ex: { showYearBoard: true, gadgetOn: false, pluggedDay: 2, showSticky: true }
 
-  updatedAt   DateTime @updatedAt
+  // 2. Data Content
+  schedule      Json?    // Array de aulas (classes)
+  stickyNote    String?  // Texto do post-it
+  
+  // 3. Modules Data
+  chatHistory   Json?    // Histórico do Assistant (Role: User/AI)
+  zaeonChat     Json?    // Histórico do Zaeon (Role: User/Agent)
+  library       Json?    // Docs salvos (storedPdfs)
+  fabricator    Json?    // Docs gerados (generatedDocs)
+  personalModules Json?  // Backpack & Archives (userModules)
+
+  // 4. Objectives (Profile Page)
+  objectives    Json?    // Matriz de hábitos
+
+  // Legacy/Other
+  activeProject Json?    
+  citations     Json?    
+  workContent   String?  
+  workTitle     String?  
+
+  updatedAt     DateTime @updatedAt
 }
 
-// --- MODELOS DE FEED ---
+// ... (Restante dos modelos SystemSetting, Post, Comment, NewsPost, Account, Session mantidos iguais)
+model SystemSetting {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique 
+  value     String   
+  updatedAt DateTime @updatedAt
+}
+
 model Post {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   content   String
-  likes     String[] @default([])
+  likes     String[] @default([]) 
   createdAt DateTime @default(now())
-
-  // Autor do Post
-  user      String   // Nome de exibição (Snapshot)
+  room      String   @default("lounge") 
+  user      String   
+  userImage String?  
   userId    String?  @db.ObjectId
   author    User?    @relation(fields: [userId], references: [id])
-
   comments  Comment[]
 }
 
 model Comment {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   content   String
-  user      String   // Nome de exibição
+  user      String   
   createdAt DateTime @default(now())
-
-  // Relação com Post
   postId    String   @db.ObjectId
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  // Relação com Usuário
   userId    String?  @db.ObjectId
   author    User?    @relation(fields: [userId], references: [id])
 }
 
-// --- MODELOS PADRÃO DO NEXTAUTH ---
+model NewsPost {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  subtitle    String?
+  content     String
+  imageUrl    String?
+  publishDate DateTime @default(now())
+  status      String   @default("draft") 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Account {
   id                String  @id @default(auto()) @map("_id") @db.ObjectId
   userId            String  @db.ObjectId
@@ -111,9 +145,7 @@ model Account {
   scope             String?
   id_token          String? @db.String
   session_state     String?
-
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([provider, providerAccountId])
 }
 

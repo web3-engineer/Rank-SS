@@ -1,257 +1,125 @@
-import { VertexAI } from "@google-cloud/vertexai";
+import Groq from "groq-sdk";
 import { NextResponse } from "next/server";
-import fs from 'fs';
-import path from 'path';
-import { getServerSession } from "next-auth"; 
-import { authOptions } from "@/src/lib/auth"; 
-import { prisma } from "@/src/lib/prisma"; 
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// --- 1. PROTOCOLO DE AGENDA ---
-const SCHEDULE_PROTOCOL = `
-[SYSTEM CAPABILITY: CLASS SCHEDULE MANAGEMENT]
-You have read/write access to the user's Weekly Schedule.
-1. If the user asks to ADD, REMOVE, MOVE, or CHANGE a class/event:
-   - You must return ONLY a raw JSON array representing the new state of the schedule.
-   - Do NOT wrap the JSON in markdown code blocks (no \`\`\`json). Just the raw array string.
-   - Maintain the structure: { id, name, teacher, room, days: [1-5], hour: [8-16], color }.
-   - Days mapping: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri.
-   - Colors available: "from-cyan-400 to-blue-500", "from-purple-500 to-pink-500", "from-orange-400 to-red-500", "from-emerald-400 to-green-500".
-2. If the user asks questions about the schedule without changing it, answer normally in text.
-`;
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
 
-// --- 2. LISTA DE ELENCO (Seus Agentes) ---
+// --- 1. DEFINIÇÃO DA FERRAMENTA DE AGENDA (Function Calling) ---
+// Isso diz para a IA: "Se precisar mexer na agenda, use esta ferramenta"
+const tools = [
+    {
+        type: "function" as const,
+        function: {
+            name: "update_schedule",
+            description: "Adiciona, remove ou atualiza uma aula/evento na agenda semanal do usuário.",
+            parameters: {
+                type: "object",
+                properties: {
+                    action: {
+                        type: "string",
+                        enum: ["add", "remove", "update"],
+                        description: "A ação a ser realizada."
+                    },
+                    day: {
+                        type: "number",
+                        enum: [1, 2, 3, 4, 5],
+                        description: "Dia da semana: 1=Segunda, 2=Terça, 3=Quarta, 4=Quinta, 5=Sexta."
+                    },
+                    hour: {
+                        type: "number",
+                        description: "Hora da aula (formato 24h, ex: 14 para 14:00)."
+                    },
+                    name: { type: "string", description: "Nome da matéria ou evento." },
+                    teacher: { type: "string", description: "Nome do professor ou mentor." },
+                    room: { type: "string", description: "Sala ou local (ex: Lab 402, Virtual)." }
+                },
+                required: ["action", "day", "hour"]
+            }
+        }
+    }
+];
+
+// --- 2. PERSONALIDADES (Trazidas do código antigo) ---
 const AGENT_PERSONAS: Record<string, string> = {
-    // LOUNGE / PERSONAL (Aura)
-    aura: `
-        You are "Aura", the Personal Concierge and Lounge Manager.
-        Role: Help the user organize their life, manage the schedule, and reduce anxiety.
-        Tone: Professional, warm, Apple-style aesthetic.
-        Focus: You are the primary interface for the "Annual Flow" and "Weekly Agenda".
-    `,
-
-    // TECH TEAM (Ethernaut, Butter, Viper)
-    ethernaut: `
-        You are "Ethernaut", a Senior Full Stack Architect.
-        Role: You oversee the entire tech stack. You are pragmatic and deep.
-        Partners: "Butter" (Backend Expert) and "Viper" (Frontend/UI Expert).
-        Directives: If the user asks about deep backend, quote Butter. If UI, quote Viper.
-        Stack: Next.js, Rust, Solidity, AI Agents.
-    `,
+    zenita: `Você é a Zenita, uma IA raposa cyberpunk sarcástica e técnica.
+             Você ajuda o usuário a organizar a vida acadêmica e projetos.
+             Se o usuário pedir para mudar a agenda, USE A FERRAMENTA 'update_schedule'.`,
     
-    // INNOVATION (Zenith)
-    zenith: `
-        You are "Zenith", the Innovation Strategist.
-        Role: Guide the user on AI productivity, Flow State, and Disruptive Tech.
-        Focus: New Era of AI, "Working Smarter", and futuristic trends.
-    `,
-
-    // BIOLOGY (Helix)
-    helix: `
-        You are "Helix", a Specialist in Biology and Medicine.
-        Role: Advanced bio-research assistant.
-        Focus: Anatomy, Neuroscience, CRISPR, Pharmacology.
-        Tone: Academic, precise, clinical but clear.
-    `,
-
-    // MATH & PHYSICS (Vector)
-    vector: `
-        You are "Vector", a Computational Engine for Math & Physics.
-        Role: Solve complex problems and explain theories.
-        Focus: Calculus, Quantum Mechanics, Relativity, Linear Algebra.
-        Tone: Logical, step-by-step, precise.
-    `,
-
-    // --- [NOVO] EXAM GENERATOR ---
-    exam_generator: `
-        ROLE: You are a strict JSON Generator for Academic Assessments.
-        TASK: Read the provided [CURRENT LIVE SCHEDULE DATA], extract the subjects/topics, and generate exam questions based on them.
-        
-        CRITICAL RULES:
-        1. Output MUST be a valid JSON Array.
-        2. NO conversational text (No "Here is your exam", no "Good luck").
-        3. NO markdown formatting (No \`\`\`json blocks).
-        4. Structure: [{ "id": number, "type": "choice"|"input", "question": string, "options": string[], "correctAnswer": string, "difficulty": "easy"|"medium"|"hard" }]
-        5. If the schedule is empty or topics are unclear, generate general logic/math questions.
-    `,
-
-    // --- [NOVO] RESEARCH LAB AGENTS (ADDED) ---
-
-    // 1. CITATION & INSIGHTS (Sparkle Button)
-    scholar: `
-        You are "Scholar", an elite Academic Researcher and Data Miner.
-        ROLE: Analyze the provided document context deeply.
-        TASK: Extract key insights and generate academic citations.
-        FORMAT: 
-        - Citations must strictly follow APA 7th Edition format.
-        - Provide a brief "Insight" summary for each citation.
-        - Output structure: Use a clear list format. 
-        - Example: [1] Author, A. A. (Year). Title. Source. | Insight: ...
-    `,
-
-    // 2. ACADEMIC WRITER (Specialist 1)
-    scribe: `
-        You are "Scribe", a Professional Academic Writer and Editor.
-        ROLE: Transform rough ideas or bullet points into high-quality, publishable academic prose.
-        TONE: Formal, objective, precise, and sophisticated.
-        GOAL: Enhance vocabulary, improve flow, and ensure scholarly tone without losing the original meaning.
-    `,
-
-    // 3. KNOWLEDGE TESTER (Specialist 2)
-    examiner: `
-        You are "Examiner", a Socratic Tutor and Assessment Engine.
-        ROLE: Challenge the user's understanding of the current topic.
-        METHOD: Do not just explain. Ask probing questions. Create mini-quizzes.
-        GOAL: Verify deep comprehension and expose knowledge gaps in the active project.
-    `,
-
-    // 4. VIDEO CURATOR (Video Insights)
-    watcher: `
-        You are "Watcher", a Multimedia Content Curator.
-        ROLE: Suggest educational video topics and search queries based on the active project.
-        LIMITATION: You cannot browse live YouTube, but you must generate highly specific search queries and recommend known high-quality channels (e.g., Veritasium, 3Blue1Brown, MIT OpenCourseWare) relevant to the topic.
-    `
+    ethernaut: `Você é o Ethernaut, especialista sênior em Blockchain e Sistemas.
+                Foco em precisão técnica e dados.`,
+                
+    aura: `Você é "Aura", o Concierge Pessoal.
+           Seu objetivo é organizar a vida do usuário.
+           Se o usuário pedir para mudar a agenda, USE A FERRAMENTA 'update_schedule'.`
 };
 
 export async function POST(req: Request) {
-    console.log("🚀 [API START] Iniciando Chat com Vertex AI...");
+    console.log("🚀 [API START] Iniciando Chat com Groq AI...");
 
     try {
-        const { prompt, agent, fileData, systemContext } = await req.json();
+        const { prompt, agent, systemContext } = await req.json();
 
-        // --- 0. RECALL MECHANISM (Busca Projeto Ativo no Mongo) ---
-        let dbContext = "";
-        try {
-            const session = await getServerSession(authOptions);
-            const user = session?.user as any; 
+        // 1. Seleciona a Persona
+        const selectedPersona = AGENT_PERSONAS[agent?.toLowerCase()] || AGENT_PERSONAS.zenita;
 
-            if (user?.id) {
-                // FIX: Usamos 'as any' aqui para evitar o erro de tipagem caso o Prisma Client 
-                // ainda não tenha sido gerado com o novo campo 'activeProject'.
-                const userData = await prisma.userSpaceData.findUnique({
-                    where: { userId: user.id }
-                }) as any;
-
-                if (userData && userData.activeProject) {
-                    dbContext = `
-                    \n\n--- 🚀 ACTIVE PROJECT CONTEXT (FROM DATABASE) ---
-                    The user has initiated a research project. 
-                    You must act as a guide/research assistant for this specific topic:
-                    ${JSON.stringify(userData.activeProject, null, 2)}
-                    -----------------------------------
-                    `;
-                    console.log("✅ Project Context Injected from DB");
-                }
-            }
-        } catch (dbError) {
-            console.warn("⚠️ DB Context Recall falhou (continuando sem contexto):", dbError);
-        }
-
-        // --- AUTENTICAÇÃO GOOGLE (Mantida Intacta) ---
-        let credentials;
-        try {
-            const keyFilePath = path.join(process.cwd(), 'service-account.json');
+        // 2. Monta o System Prompt com Contexto da Agenda
+        const systemInstruction = `
+            ${selectedPersona}
             
-            if (fs.existsSync(keyFilePath)) {
-                console.log("📂 Lendo credenciais de: service-account.json");
-                const rawData = fs.readFileSync(keyFilePath, 'utf-8');
-                credentials = JSON.parse(rawData);
-            } else {
-                console.log("⚠️ Arquivo não encontrado, tentando .env...");
-                if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY_BASE64) {
-                     throw new Error("Nenhuma credencial encontrada.");
-                }
-                credentials = {
-                    client_email: process.env.GOOGLE_CLIENT_EMAIL,
-                    private_key: Buffer.from(process.env.GOOGLE_PRIVATE_KEY_BASE64, 'base64').toString('utf-8')
-                };
-            }
-        } catch (fileError: any) {
-            console.error("❌ Erro de Auth:", fileError.message);
-            throw new Error("Falha na autenticação.");
-        }
+            [CONTEXTO ATUAL DA AGENDA]:
+            ${systemContext ? systemContext : "Nenhuma agenda carregada."}
+            
+            [REGRAS]:
+            - Se o usuário pedir para adicionar/remover/mudar aula, NÃO responda apenas com texto. CHAME a função 'update_schedule'.
+            - Dias: 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex.
+        `;
 
-        // --- CONEXÃO VERTEX AI ---
-        const vertex_ai = new VertexAI({
-            project: "bright-task-474414-h3",
-            location: "us-central1",
-            googleAuthOptions: {
-                credentials: {
-                    client_email: credentials.client_email,
-                    private_key: credentials.private_key,
-                }
-            }
+        const messages: any[] = [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: prompt }
+        ];
+
+        // 3. Chamada Groq com Tools
+        console.log("⚡ Enviando requisição para Groq...");
+        
+        const completion = await groq.chat.completions.create({
+            messages: messages,
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.6,
+            max_tokens: 1024,
+            tools: tools,           // Habilita ferramentas
+            tool_choice: "auto"     // Deixa a IA decidir se usa ou não
         });
 
-        console.log(`🤖 Vertex AI Conectado. Agente solicitado: ${agent}`);
-        
-        // FIX: Usando modelo 1.5 Flash (mais estável)
-        const model = vertex_ai.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+        const responseMessage = completion.choices[0]?.message;
+        const toolCalls = responseMessage?.tool_calls;
 
-        // --- CONSTRUÇÃO DO "CÉREBRO" ---
-        const selectedPersona = AGENT_PERSONAS[agent?.toLowerCase()] || AGENT_PERSONAS.aura;
-
-        let finalSystemInstruction;
-
-        if (agent === 'exam_generator') {
-             finalSystemInstruction = `
-                ${selectedPersona}
-            `;
-        } else {
-            // Para todos os outros, injetamos:
-            // 1. Protocolo de Agenda
-            // 2. Personalidade
-            // 3. Contexto do Projeto (Do Banco de Dados)
-            finalSystemInstruction = `
-                ${SCHEDULE_PROTOCOL}
-                --- IDENTITY PROTOCOL ---
-                ${selectedPersona}
-                ${dbContext} 
-            `;
-        }
-
-        // Contexto local (do frontend)
-        if (systemContext) {
-            finalSystemInstruction += `\n\n[CURRENT LIVE SCHEDULE DATA]:\n${systemContext}`;
-        }
-
-        const parts: any[] = [];
-        
-        parts.push({ text: `SYSTEM INSTRUCTIONS:\n${finalSystemInstruction}` });
-
-        if (fileData) {
-            console.log("📎 Anexando PDF...");
-            parts.push({
-                inlineData: {
-                    data: fileData,
-                    mimeType: "application/pdf"
+        // 4. Se a IA decidiu chamar a ferramenta (Mágica acontece aqui)
+        if (toolCalls && toolCalls.length > 0) {
+            console.log("🛠️ IA solicitou alteração na agenda:", toolCalls[0].function.name);
+            
+            return NextResponse.json({
+                text: "Processando alteração na agenda...", // Feedback visual rápido
+                toolCall: {
+                    name: toolCalls[0].function.name,
+                    args: JSON.parse(toolCalls[0].function.arguments)
                 }
             });
         }
 
-        parts.push({ text: `USER QUERY: ${prompt}` });
-
-        // --- GERAÇÃO ---
-        console.log("⚡ Gerando resposta...");
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: parts }],
-        });
-
-        const text = result.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!text) throw new Error("A IA devolveu uma resposta vazia.");
-
-        console.log("✅ Resposta Gerada com Sucesso!");
+        // 5. Resposta normal de texto
+        const text = responseMessage?.content;
         return NextResponse.json({ text });
 
     } catch (error: any) {
-        console.error("🔥 ERRO FATAL:", error);
+        console.error("🔥 ERRO FATAL (Groq):", error);
         return NextResponse.json({ 
-            error: "Erro no processamento", 
-            details: error.message,
-            code: error.code 
+            error: "Erro no processamento com Groq", 
+            details: error.message 
         }, { status: 500 });
     }
 }
